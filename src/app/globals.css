@@ -1,0 +1,206 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+
+/* ─────────────────────────────────────────
+   Tailwind v4 Theme Tokens
+───────────────────────────────────────── */
+@theme inline {
+  /* Colors */
+  --color-background:     #0F172A;
+  --color-surface:        #1E293B;
+  --color-surface-2:      #334155;
+  --color-border:         #334155;
+
+  --color-primary:        #2563EB;
+  --color-primary-light:  #3B82F6;
+  --color-primary-glow:   rgba(37, 99, 235, 0.3);
+
+  --color-text:           #F1F5F9;
+  --color-text-muted:     #94A3B8;
+  --color-text-faint:     #475569;
+
+  --color-success:        #22C55E;
+  --color-error:          #EF4444;
+  --color-warning:        #F59E0B;
+  --color-ai:             #8B5CF6;
+
+  /* Gradients */
+  --gradient-primary:     linear-gradient(135deg, #2563EB, #8B5CF6);
+  --gradient-card:        linear-gradient(135deg, #1E293B, #334155);
+
+  /* Typography */
+  --font-sans:  'Inter', system-ui, sans-serif;
+  --font-mono:  'JetBrains Mono', monospace;
+
+  /* Animations */
+  --animate-sonar:       sonar 1.5s ease-out infinite;
+  --animate-sonar-2:     sonar 1.5s ease-out 0.5s infinite;
+  --animate-sonar-3:     sonar 1.5s ease-out 1s infinite;
+  --animate-pulse-glow:  pulse-glow 2s ease-in-out infinite;
+  --animate-fade-up:     fade-up 0.4s ease-out both;
+  --animate-slide-in:    slide-in 0.3s ease-out both;
+}
+
+/* ─────────────────────────────────────────
+   CSS Variables (for direct use)
+───────────────────────────────────────── */
+:root {
+  --background:   #0F172A;
+  --foreground:   #F1F5F9;
+  --surface:      #1E293B;
+  --surface-2:    #334155;
+  --border:       #334155;
+  --primary:      #2563EB;
+  --primary-light:#3B82F6;
+  --muted:        #94A3B8;
+  --success:      #22C55E;
+  --error:        #EF4444;
+  --warning:      #F59E0B;
+  --ai-purple:    #8B5CF6;
+}
+
+/* ─────────────────────────────────────────
+   Base Styles
+───────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+}
+
+/* ─────────────────────────────────────────
+   Custom Scrollbar
+───────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #1E293B;
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* ─────────────────────────────────────────
+   Keyframe Animations
+───────────────────────────────────────── */
+
+/* Mic sonar rings */
+@keyframes sonar {
+  0%   { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+/* Glow pulse for mic button */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); }
+  50%       { box-shadow: 0 0 40px rgba(239, 68, 68, 0.8); }
+}
+
+/* Page element entrance */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Slide in from left */
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(-16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Gradient shimmer for loading skeletons */
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+/* Typing dots */
+@keyframes typing-dot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30%            { transform: translateY(-6px); opacity: 1; }
+}
+
+/* ─────────────────────────────────────────
+   Utility Classes
+───────────────────────────────────────── */
+
+/* Mic sonar rings */
+.mic-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(239, 68, 68, 0.6);
+  animation: sonar 1.5s ease-out infinite;
+}
+.mic-ring-2 { animation-delay: 0.5s; }
+.mic-ring-3 { animation-delay: 1s; }
+
+/* Glass card effect */
+.glass {
+  background: rgba(30, 41, 59, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(51, 65, 85, 0.5);
+}
+
+/* Loading skeleton */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #1E293B 25%,
+    #334155 50%,
+    #1E293B 75%
+  );
+  background-size: 200% auto;
+  animation: shimmer 1.5s linear infinite;
+  border-radius: 8px;
+}
+
+/* Typing indicator */
+.typing-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+  animation: typing-dot 1.2s ease-in-out infinite;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #2563EB, #8B5CF6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Focus ring */
+*:focus-visible {
+  outline: 2px solid #2563EB;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Animate fade-up utility */
+.animate-fade-up { animation: fade-up 0.4s ease-out both; }
+.animate-slide-in { animation: slide-in 0.3s ease-out both; }
