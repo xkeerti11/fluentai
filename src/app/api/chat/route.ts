@@ -1,8 +1,7 @@
-import Groq from 'groq-sdk'
 import { createServerSupabase } from '@/lib/supabase/server'
 import { buildMainTutorPrompt, buildRoleplaySystemPrompt } from '@/lib/gemini/prompts'
 import { sanitizeUserInput } from '@/lib/utils/sanitize'
-import { GROQ_MODEL } from '@/lib/groq/client'
+import { callAI } from '@/lib/ai/router'
 
 export const runtime = 'nodejs'
 
@@ -16,17 +15,21 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Fetch user's groq_api_key
+    // ── 2. Fetch user profile (including BYOK keys) ────────
     const { data: userProfile } = await supabase
       .from('profiles')
-      .select('groq_api_key, level, goal, current_day')
+      .select('ai_provider, groq_api_key, openai_api_key, gemini_api_key, level, goal, current_day')
       .eq('id', session.user.id)
       .single()
 
-    const groqApiKey = userProfile?.groq_api_key || process.env.GROQ_API_KEY
-    const groq = new Groq({ apiKey: groqApiKey })
+    const aiConfig = {
+      provider: userProfile?.ai_provider || 'groq',
+      groq_api_key: userProfile?.groq_api_key,
+      openai_api_key: userProfile?.openai_api_key,
+      gemini_api_key: userProfile?.gemini_api_key,
+    }
 
-    // ── 2. Parse & validate body ───────────────────────────
+    // ── 3. Parse & validate body ───────────────────────────
     const body = await req.json()
     const {
       message,
@@ -46,7 +49,7 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Empty message' }, { status: 400 })
     }
 
-    // ── 3. Fetch memory (skip for roleplay) ────────────────
+    // ── 4. Fetch memory (skip for roleplay) ────────────────
     let memoryString = 'None'
     if (mode !== 'roleplay') {
       let summariesStr = 'No previous session summaries.'
@@ -86,7 +89,7 @@ export async function POST(req: Request) {
       memoryString = `SUMMARY OF PREVIOUS SESSIONS:\n${summariesStr}\n\nRECURRING MISTAKES TO WATCH OUT FOR:\n${commonMistakesStr}`
     }
 
-    // ── 4. Build system prompt ─────────────────────────────
+    // ── 5. Build system prompt ─────────────────────────────
     let systemPrompt = ''
     if (mode === 'roleplay') {
       systemPrompt = buildRoleplaySystemPrompt(roleplayScene, userLevel)
@@ -102,26 +105,28 @@ You are teaching a structured daily lesson. Follow this lesson plan:
       systemPrompt = basePrompt
     }
 
-    // ── 5. Build Groq messages array ───────────────────────
-    const messages = [
-      { role: 'system' as const, content: systemPrompt },
-      ...history.slice(-20).map((msg: { role: string; content: string }) => ({
-        role: (msg.role === 'assistant' ? 'assistant' : 'user') as 'assistant' | 'user',
-        content: msg.content,
-      })),
-      { role: 'user' as const, content: cleanMessage },
-    ]
-
-    // ── 6. Call Groq ───────────────────────────────────────
-    const completion = await groq.chat.completions.create({
-      model: GROQ_MODEL,
-      messages,
-      temperature: 0.7,
-      max_tokens: 500,
-      response_format: { type: 'json_object' },
-    })
-
-    const responseText = completion.choices[0]?.message?.content || ''
+    // ── 6. Call AI via router ──────────────────────────────
+    let responseText: string
+    try {
+      responseText = await callAI(
+        aiConfig,
+        systemPrompt,
+        cleanMessage,
+        history.slice(-20),
+        { temperature: 0.7, maxTokens: 500, responseFormat: 'json_object' }
+      )
+    } catch (err: any) {
+      if (err.message === 'no_api_key') {
+        return Response.json(
+          {
+            error: 'no_api_key',
+            message: 'Settings mein apni AI API key add karo. Bina key ke AI se baat nahi ho sakti! 🔑',
+          },
+          { status: 403 }
+        )
+      }
+      throw err
+    }
 
     // ── 7. Parse JSON response ─────────────────────────────
     let parsedResponse
@@ -150,7 +155,7 @@ You are teaching a structured daily lesson. Follow this lesson plan:
     return Response.json({ success: true, data: parsedResponse })
 
   } catch (error: any) {
-    console.error('Groq chat error:', error?.message || error)
+    console.error('AI chat error:', error?.message || error)
 
     const isRateLimit =
       error?.message?.includes('429') ||

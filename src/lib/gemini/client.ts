@@ -1,11 +1,15 @@
 import { GoogleGenAI } from '@google/genai'
 
-// Singleton Gemini client — server-side only
-export const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY || 'placeholder-key'
-})
+// NOTE: The global singleton has been removed as part of the BYOK migration.
+// All AI calls now go through src/lib/ai/router.ts using per-user API keys.
+// This file is kept for utility functions used elsewhere.
 
-export default ai
+/** @deprecated Use callAI() from @/lib/ai/router instead */
+export function createGeminiClient(apiKey: string) {
+  return new GoogleGenAI({ apiKey })
+}
+
+export default createGeminiClient
 
 // ─────────────────────────────────────────
 // Safe wrapper with retry on rate limit

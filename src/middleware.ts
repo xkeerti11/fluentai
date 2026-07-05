@@ -75,21 +75,12 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    '/dashboard',
     '/dashboard/:path*',
-    '/speaking',
     '/speaking/:path*',
-    '/grammar',
     '/grammar/:path*',
-    '/vocabulary',
     '/vocabulary/:path*',
-    '/progress',
     '/progress/:path*',
-    '/onboarding',
-    '/onboarding/:path*',
-    '/settings',
     '/settings/:path*',
-    '/login',
-    '/api/:path*',
+    '/onboarding/:path*',
   ],
 }

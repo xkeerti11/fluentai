@@ -19,7 +19,11 @@ export interface Profile {
   current_day: number        // Day 1–180 of the learning journey
   created_at: string
   updated_at: string
+  // BYOK — user-supplied AI keys
+  ai_provider?: string        // 'groq' | 'gemini' | 'openai'
   groq_api_key?: string | null
+  openai_api_key?: string | null
+  gemini_api_key?: string | null
 }
 
 export interface Conversation {

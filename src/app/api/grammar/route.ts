@@ -1,13 +1,10 @@
-import Groq from 'groq-sdk'
 import { createServerSupabase } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { sanitizeSentence } from '@/lib/utils/sanitize'
 import { isRateLimited } from '@/lib/utils/rateLimit'
-import { GROQ_MODEL } from '@/lib/groq/client'
+import { callAI } from '@/lib/ai/router'
 
 export const runtime = 'nodejs'
-
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY! })
 
 const GRAMMAR_CORRECTION_SYSTEM = `You are an English grammar correction expert for Hindi speakers.
 Analyze the given sentence and return ONLY a valid JSON object (no markdown, no backticks).
@@ -40,23 +37,45 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 })
     }
 
+    // Fetch user's BYOK config
+    const { data: userProfile } = await supabase
+      .from('profiles')
+      .select('ai_provider, groq_api_key, openai_api_key, gemini_api_key')
+      .eq('id', session.user.id)
+      .single()
+
+    const aiConfig = {
+      provider: userProfile?.ai_provider || 'groq',
+      groq_api_key: userProfile?.groq_api_key,
+      openai_api_key: userProfile?.openai_api_key,
+      gemini_api_key: userProfile?.gemini_api_key,
+    }
+
     const { sentence } = await req.json()
     const clean = sanitizeSentence(sentence)
     if (!clean) return NextResponse.json({ error: 'Empty sentence' }, { status: 400 })
 
-    // ── Primary: Groq (fast, always available) ──────────────
-    const completion = await groq.chat.completions.create({
-      model: GROQ_MODEL,
-      messages: [
-        { role: 'system', content: GRAMMAR_CORRECTION_SYSTEM },
-        { role: 'user', content: `Input sentence: ${clean}` }
-      ],
-      temperature: 0.3,
-      max_tokens: 400,
-      response_format: { type: 'json_object' },
-    })
-
-    const responseText = completion.choices[0]?.message?.content || ''
+    let responseText: string
+    try {
+      responseText = await callAI(
+        aiConfig,
+        GRAMMAR_CORRECTION_SYSTEM,
+        `Input sentence: ${clean}`,
+        [],
+        { temperature: 0.3, maxTokens: 400, responseFormat: 'json_object' }
+      )
+    } catch (err: any) {
+      if (err.message === 'no_api_key') {
+        return NextResponse.json(
+          {
+            error: 'no_api_key',
+            message: 'Settings mein apni AI API key add karo. Bina key ke AI se baat nahi ho sakti! 🔑',
+          },
+          { status: 403 }
+        )
+      }
+      throw err
+    }
 
     let parsed
     try {

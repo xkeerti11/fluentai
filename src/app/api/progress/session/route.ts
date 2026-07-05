@@ -1,6 +1,8 @@
 import { createServerSupabase } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { GoogleGenAI } from '@google/genai'
+import Groq from 'groq-sdk'
+import OpenAI from 'openai'
 
 export async function POST(req: Request) {
   try {
@@ -20,6 +22,28 @@ export async function POST(req: Request) {
       lessonId,
       sessionId
     } = await req.json()
+
+    // Fetch user BYOK config for AI summarization
+    const { data: userProfile } = await supabase
+      .from('profiles')
+      .select('ai_provider, groq_api_key, openai_api_key, gemini_api_key')
+      .eq('id', session.user.id)
+      .single()
+
+    // Helper to get a working AI client for session summarization
+    const getAIKey = (): { provider: string; key: string } | null => {
+      const p = userProfile?.ai_provider || 'groq'
+      if (p === 'groq' && userProfile?.groq_api_key) return { provider: 'groq', key: userProfile.groq_api_key }
+      if (p === 'gemini' && userProfile?.gemini_api_key) return { provider: 'gemini', key: userProfile.gemini_api_key }
+      if (p === 'openai' && userProfile?.openai_api_key) return { provider: 'openai', key: userProfile.openai_api_key }
+      // Fallback: try any available key
+      if (userProfile?.gemini_api_key) return { provider: 'gemini', key: userProfile.gemini_api_key }
+      if (userProfile?.groq_api_key) return { provider: 'groq', key: userProfile.groq_api_key }
+      if (userProfile?.openai_api_key) return { provider: 'openai', key: userProfile.openai_api_key }
+      return null
+    }
+
+    const aiKeyInfo = getAIKey()
 
     // Validate and map mode to database check constraint allowed values
     const allowedModes = ['general', 'grammar', 'vocabulary', 'roleplay', 'challenge']
@@ -46,27 +70,44 @@ export async function POST(req: Request) {
           .eq('session_id', sessionId)
           .order('created_at', { ascending: true })
 
-        if (conversations && conversations.length > 0) {
+        if (conversations && conversations.length > 0 && aiKeyInfo) {
           const chatLog = conversations.map((c: any) => `User: ${c.user_message}\nAria: ${c.ai_response}`).join('\n\n')
-          const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! })
 
-          // Generate 3-sentence memory summary
+          const summaryPrompt = `Summarize this conversation in 3 sentences. Note: user's level, common mistakes made, topics discussed, progress shown. Be brief. This is for AI memory.\n\nConversation Log:\n${chatLog}`
+
+          // Generate 3-sentence memory summary using user's active provider
           try {
-            const summaryResult = await genAI.models.generateContent({
-              model: 'gemini-2.5-flash',
-              contents: `Summarize this conversation in 3 sentences. Note: user's level, common mistakes made, topics discussed, progress shown. Be brief. This is for AI memory.\n\nConversation Log:\n${chatLog}`
-            })
-            sessionSummary = summaryResult.text || null
+            if (aiKeyInfo.provider === 'gemini') {
+              const genAI = new GoogleGenAI({ apiKey: aiKeyInfo.key })
+              const summaryResult = await genAI.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: summaryPrompt
+              })
+              sessionSummary = summaryResult.text || null
+            } else if (aiKeyInfo.provider === 'groq') {
+              const groq = new Groq({ apiKey: aiKeyInfo.key })
+              const result = await groq.chat.completions.create({
+                model: 'llama-3.3-70b-versatile',
+                messages: [{ role: 'user', content: summaryPrompt }],
+                max_tokens: 300,
+              })
+              sessionSummary = result.choices[0]?.message?.content || null
+            } else if (aiKeyInfo.provider === 'openai') {
+              const openai = new OpenAI({ apiKey: aiKeyInfo.key })
+              const result = await openai.chat.completions.create({
+                model: 'gpt-4o-mini',
+                messages: [{ role: 'user', content: summaryPrompt }],
+                max_tokens: 300,
+              })
+              sessionSummary = result.choices[0]?.message?.content || null
+            }
           } catch (se) {
             console.error('Error generating summary:', se)
           }
 
           // Evaluate roleplay feedback if in roleplay mode
-          if (mode === 'roleplay') {
-            try {
-              const feedbackResult = await genAI.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: `You are an English language evaluator. Evaluate this roleplay conversation log. Analyze user response and evaluate their performance. Return ONLY a valid JSON object matching the format below (do NOT include markdown formatting or backticks):
+          if (mode === 'roleplay' && aiKeyInfo) {
+            const feedbackPrompt = `You are an English language evaluator. Evaluate this roleplay conversation log. Analyze user response and evaluate their performance. Return ONLY a valid JSON object matching the format below (do NOT include markdown formatting or backticks):
 {
   "toneRating": number (1 to 5),
   "grammarRating": number (1 to 5),
@@ -77,9 +118,34 @@ export async function POST(req: Request) {
 
 Conversation Log:
 ${chatLog}`
-              })
-
-              const rawText = feedbackResult.text || ''
+            try {
+              let rawText = ''
+              if (aiKeyInfo.provider === 'gemini') {
+                const genAI = new GoogleGenAI({ apiKey: aiKeyInfo.key })
+                const feedbackResult = await genAI.models.generateContent({
+                  model: 'gemini-2.5-flash',
+                  contents: feedbackPrompt
+                })
+                rawText = feedbackResult.text || ''
+              } else if (aiKeyInfo.provider === 'groq') {
+                const groq = new Groq({ apiKey: aiKeyInfo.key })
+                const result = await groq.chat.completions.create({
+                  model: 'llama-3.3-70b-versatile',
+                  messages: [{ role: 'user', content: feedbackPrompt }],
+                  max_tokens: 400,
+                  response_format: { type: 'json_object' },
+                })
+                rawText = result.choices[0]?.message?.content || ''
+              } else if (aiKeyInfo.provider === 'openai') {
+                const openai = new OpenAI({ apiKey: aiKeyInfo.key })
+                const result = await openai.chat.completions.create({
+                  model: 'gpt-4o-mini',
+                  messages: [{ role: 'user', content: feedbackPrompt }],
+                  max_tokens: 400,
+                  response_format: { type: 'json_object' },
+                })
+                rawText = result.choices[0]?.message?.content || ''
+              }
               const cleanJSON = rawText.replace(/```json/g, '').replace(/```/g, '').trim()
               roleplayFeedback = JSON.parse(cleanJSON)
             } catch (fe) {

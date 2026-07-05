@@ -1,6 +1,5 @@
-import Groq from 'groq-sdk'
 import { createServerSupabase } from '@/lib/supabase/server'
-import { GROQ_MODEL } from '@/lib/groq/client'
+import { callAI } from '@/lib/ai/router'
 
 export const runtime = 'nodejs'
 
@@ -12,15 +11,19 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Fetch user's groq_api_key
+    // Fetch user's BYOK config
     const { data: userProfile } = await supabase
       .from('profiles')
-      .select('groq_api_key, level, goal, current_day')
+      .select('ai_provider, groq_api_key, openai_api_key, gemini_api_key, level, goal, current_day')
       .eq('id', session.user.id)
       .single()
 
-    const groqApiKey = userProfile?.groq_api_key || process.env.GROQ_API_KEY
-    const groq = new Groq({ apiKey: groqApiKey })
+    const aiConfig = {
+      provider: userProfile?.ai_provider || 'groq',
+      groq_api_key: userProfile?.groq_api_key,
+      openai_api_key: userProfile?.openai_api_key,
+      gemini_api_key: userProfile?.gemini_api_key,
+    }
 
     const { lessonTopic, lessonFormula, userLevel, message, history } = await req.json()
 
@@ -52,24 +55,28 @@ Return ONLY valid JSON:
   }
 }`
 
-    const messages = [
-      { role: 'system' as const, content: systemPrompt },
-      ...((history || []).slice(-8).map((msg: any) => ({
-        role: (msg.role === 'assistant' ? 'assistant' : 'user') as 'assistant' | 'user',
-        content: msg.content,
-      }))),
-      { role: 'user' as const, content: message },
-    ]
-
-    const completion = await groq.chat.completions.create({
-      model: GROQ_MODEL,
-      messages,
-      temperature: 0.6,
-      max_tokens: 300,
-      response_format: { type: 'json_object' },
-    })
-
-    const responseText = completion.choices[0]?.message?.content || ''
+    // Call AI via router
+    let responseText: string
+    try {
+      responseText = await callAI(
+        aiConfig,
+        systemPrompt,
+        message,
+        (history || []).slice(-8),
+        { temperature: 0.6, maxTokens: 300, responseFormat: 'json_object' }
+      )
+    } catch (err: any) {
+      if (err.message === 'no_api_key') {
+        return Response.json(
+          {
+            error: 'no_api_key',
+            message: 'Settings mein apni AI API key add karo. Bina key ke AI se baat nahi ho sakti! 🔑',
+          },
+          { status: 403 }
+        )
+      }
+      throw err
+    }
 
     let parsedResponse
     try {
