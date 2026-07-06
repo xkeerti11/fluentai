@@ -118,6 +118,10 @@ export default function SettingsPage() {
   const currentKey = keys[activeProvider]
 
   const handleSaveKey = async () => {
+    if (!profile?.id) {
+      toast.error('Pehle login karo')
+      return
+    }
     const key = currentKey.trim()
     if (!key) {
       toast.error('API key enter karo pehle')
@@ -167,6 +171,7 @@ export default function SettingsPage() {
   }
 
   const handleRemoveKey = async () => {
+    if (!profile?.id) return
     try {
       const updatePayload: Record<string, string | null> = {
         [currentProviderConfig.keyField]: null,
@@ -304,26 +309,30 @@ export default function SettingsPage() {
           </ol>
         </div>
 
-        {/* Key input */}
-        <div className="relative mb-4">
+        {/* Key input — wrapped in form to satisfy browser accessibility rules */}
+        <form onSubmit={e => { e.preventDefault(); handleSaveKey() }} className="relative mb-4">
           <input
             type={showKey ? 'text' : 'password'}
             value={currentKey}
             onChange={e => setKeys(k => ({ ...k, [activeProvider]: e.target.value }))}
             placeholder={currentProviderConfig.placeholder}
+            autoComplete="current-password"
             className="w-full bg-slate-900 border border-slate-600
               focus:border-blue-500 rounded-xl px-4 py-3 pr-12
               text-white placeholder-slate-500 text-sm
               outline-none transition-colors font-mono"
           />
           <button
+            type="button"
             onClick={() => setShowKey(!showKey)}
             className="absolute right-3 top-1/2 -translate-y-1/2
               text-slate-400 hover:text-white transition-colors"
           >
             {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>
-        </div>
+          {/* Hidden submit so Enter key triggers save */}
+          <button type="submit" className="sr-only">Save</button>
+        </form>
 
         {/* Buttons */}
         <div className="flex gap-3">
