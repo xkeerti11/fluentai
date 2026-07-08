@@ -1,14 +1,16 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Eye, EyeOff, Mail, Lock, User, Zap } from 'lucide-react'
+import { useAuth } from '@/hooks/useAuth'
 
 type Mode = 'login' | 'signup' | 'forgot'
 
 export default function LoginPage() {
   const router = useRouter()
+  const { user, profile, loading: authLoading } = useAuth()
   
   const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
@@ -16,6 +18,17 @@ export default function LoginPage() {
   const [name, setName] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+
+  // Fix 5 — Redirect already-logged-in users
+  useEffect(() => {
+    if (!authLoading && user) {
+      if (profile && !profile.onboarding_completed) {
+        router.push('/onboarding')
+      } else if (profile && profile.onboarding_completed) {
+        router.push('/dashboard')
+      }
+    }
+  }, [user, profile, authLoading, router])
 
   // Google Login
   const handleGoogleLogin = async () => {
@@ -25,14 +38,18 @@ export default function LoginPage() {
     })
   }
 
-  // Email Sign Up
+  // Email Sign Up — Fix 1
   const handleSignUp = async () => {
     if (!name.trim()) { toast.error('Naam daalo'); return }
     if (!email.trim()) { toast.error('Email daalo'); return }
-    if (password.length < 6) { toast.error('Password kam se kam 6 characters ka hona chahiye'); return }
-    
+    if (password.length < 6) {
+      toast.error('Password kam se kam 6 characters ka hona chahiye')
+      return
+    }
+
     setLoading(true)
     try {
+      // Step 1: Create auth user
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
@@ -41,19 +58,50 @@ export default function LoginPage() {
           emailRedirectTo: `${window.location.origin}/auth/callback`
         }
       })
-      
+
       if (error) throw error
-      
-      if (data.user && !data.session) {
-        // Email confirmation required
-        toast.success('Verification email bheja gaya! Email check karo aur link pe click karo.')
-        setMode('login')
-      } else if (data.session) {
-        // Auto confirmed (if email confirmation disabled in Supabase)
+
+      // Step 2: Session exists → email confirm is disabled → create profile immediately
+      if (data.user && data.session) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: data.user.id,
+            name: name.trim(),
+            email: email.trim(),
+            level: 'A0',
+            goal: 'general',
+            native_language: 'hindi',
+            onboarding_completed: false,
+            current_day: 1,
+            ai_provider: 'groq'
+          })
+
+        if (profileError && profileError.code !== '23505') {
+          // 23505 = duplicate key — profile already exists, that's fine
+          console.error('Profile creation error:', profileError)
+        }
+
+        toast.success('Account ban gaya! Welcome to FluentAI 🎉')
         router.push('/onboarding')
+        router.refresh()
+        return
+      }
+
+      // Step 3: No session → email confirmation is required
+      if (data.user && !data.session) {
+        toast.success(
+          'Verification email bheja gaya! Email check karo aur link pe click karo.',
+          { duration: 8000 }
+        )
+        setMode('login')
+        return
       }
     } catch (err: any) {
-      if (err.message?.includes('already registered')) {
+      if (
+        err.message?.includes('already registered') ||
+        err.message?.includes('User already registered')
+      ) {
         toast.error('Ye email pehle se registered hai. Login karo.')
         setMode('login')
       } else {
@@ -64,28 +112,48 @@ export default function LoginPage() {
     }
   }
 
-  // Email Login
+  // Email Login — Fix 4
   const handleEmailLogin = async () => {
     if (!email.trim()) { toast.error('Email daalo'); return }
     if (!password.trim()) { toast.error('Password daalo'); return }
-    
+
     setLoading(true)
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password
       })
-      
+
       if (error) throw error
-      router.push('/dashboard')
-      router.refresh()
+
+      if (data.user && data.session) {
+        // Check profile & onboarding status before routing
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('onboarding_completed')
+          .eq('id', data.user.id)
+          .maybeSingle()
+
+        if (!profile) {
+          // No profile yet — go to onboarding (useAuth will create one)
+          router.push('/onboarding')
+        } else if (!profile.onboarding_completed) {
+          router.push('/onboarding')
+        } else {
+          router.push('/dashboard')
+        }
+        router.refresh()
+      }
     } catch (err: any) {
-      if (err.message?.includes('Invalid login')) {
+      if (err.message?.includes('Invalid login credentials')) {
         toast.error('Email ya password galat hai.')
       } else if (err.message?.includes('Email not confirmed')) {
-        toast.error('Email verify nahi hui. Inbox check karo.')
+        toast.error(
+          'Email verify nahi hui. Inbox check karo ya dobara signup karo.',
+          { duration: 6000 }
+        )
       } else {
-        toast.error(err.message || 'Login nahi hua.')
+        toast.error(err.message || 'Login nahi hua. Dobara try karo.')
       }
     } finally {
       setLoading(false)
