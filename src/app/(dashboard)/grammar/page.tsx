@@ -5,7 +5,7 @@ import { CheckCircle, Lock, BookOpen, Mic, RotateCcw, Volume2, VolumeX, Award, A
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/useAuth'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
-import { useKokoroTTS } from '@/hooks/useKokoroTTS'
+import { useSpeechSynthesis } from '@/hooks/useSpeechSynthesis'
 import { GRAMMAR_LESSONS, GrammarLesson } from '@/data/grammar-curriculum'
 import { supabase } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils/cn'
@@ -44,7 +44,7 @@ export default function GrammarModulePage() {
     error: recognitionError
   } = useSpeechRecognition()
 
-  const { speak, stopSpeaking, isSpeaking } = useKokoroTTS()
+  const { speak, stopSpeaking, isSpeaking } = useSpeechSynthesis()
 
   // Load completed lessons progress
   useEffect(() => {

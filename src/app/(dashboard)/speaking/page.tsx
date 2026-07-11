@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils/cn'
 import { useChatStore } from '@/store/useChatStore'
 import { useUserStore } from '@/store/useUserStore'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
-import { useKokoroTTS } from '@/hooks/useKokoroTTS'
+import { useSpeechSynthesis } from '@/hooks/useSpeechSynthesis'
 import { MicButton } from '@/components/speaking/MicButton'
 import { ChatBubble } from '@/components/speaking/ChatBubble'
 import { TranscriptDisplay } from '@/components/speaking/TranscriptDisplay'
@@ -45,6 +45,7 @@ export default function SpeakingPage() {
   const [roleplayStep, setRoleplayStep] = useState<'select_scene' | 'confirm_scene' | 'chat'>('select_scene')
   const [roleplayFeedbackState, setRoleplayFeedbackState] = useState<any>(null)
   const [isNotChrome, setIsNotChrome] = useState(false)
+  const [slowMode, setSlowMode] = useState(false)
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -66,12 +67,9 @@ export default function SpeakingPage() {
     error: recognitionError
   } = useSpeechRecognition()
 
-  const { speak, stopSpeaking, isSpeaking, serverOnline, checkServer } = useKokoroTTS()
+  const { speak, stopSpeaking, speakSlower, isSpeaking, isSupported: ttsSupported } = useSpeechSynthesis()
 
-  // Check Kokoro TTS server on mount
-  useEffect(() => {
-    checkServer()
-  }, [])
+
 
   // Speak the first welcome message on delay to allow Chrome speech engines to initialize
   useEffect(() => {
@@ -250,7 +248,7 @@ export default function SpeakingPage() {
     })
 
     if (voiceEnabled) {
-      speak(welcome)
+      slowMode ? speakSlower(welcome) : speak(welcome)
     }
   }
 
@@ -329,7 +327,7 @@ export default function SpeakingPage() {
 
       // Speak response aloud
       if (voiceEnabled && data.reply) {
-        speak(data.reply)
+        slowMode ? speakSlower(data.reply) : speak(data.reply)
       }
     } catch (e: any) {
       toast.error(e.message ?? 'Aria seems busy. Try again.')
@@ -585,12 +583,7 @@ export default function SpeakingPage() {
 
   return (
     <div className="flex flex-col h-screen bg-slate-900 relative overflow-hidden" style={{ background: '#0F172A' }}>
-      {/* Kokoro TTS Server Offline Banner */}
-      {!serverOnline && (
-        <div className="flex-shrink-0 flex items-center gap-2 px-3 py-2 bg-yellow-900/30 border-b border-yellow-800 text-yellow-300 text-xs">
-          ⚠️ Voice server offline — terminal mein run karo: <code className="font-mono bg-yellow-900/40 px-1 py-0.5 rounded">bash kokoro-start.sh</code>
-        </div>
-      )}
+
 
       {/* Chrome Detection warning banner */}
       {isNotChrome && (
@@ -627,6 +620,19 @@ export default function SpeakingPage() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Slow speed toggle */}
+          <button
+            onClick={() => setSlowMode(!slowMode)}
+            title={slowMode ? 'Normal speed pe switch karo' : 'Slow speed pe switch karo'}
+            className={`p-2 rounded-lg transition-colors text-xs font-medium ${
+              slowMode
+                ? 'bg-blue-600 text-white'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            {slowMode ? '0.65x' : '0.85x'}
+          </button>
+
           <button
             onClick={() => {
               if (voiceEnabled) stopSpeaking()

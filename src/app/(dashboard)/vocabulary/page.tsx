@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/useAuth'
-import { useKokoroTTS } from '@/hooks/useKokoroTTS'
+import { useSpeechSynthesis } from '@/hooks/useSpeechSynthesis'
 import { supabase } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils/cn'
 import { VOCABULARY_WORDS, VOCABULARY_TOPICS, VocabularyWord } from '@/data/vocabulary-curriculum'
@@ -29,7 +29,7 @@ interface LearnedWordJoin {
 
 export default function VocabularyPage() {
   const { profile } = useAuth()
-  const { speak } = useKokoroTTS()
+  const { speak } = useSpeechSynthesis()
   
   const [activeTab, setActiveTab] = useState<TabType>('today')
   const [loading, setLoading] = useState(true)
