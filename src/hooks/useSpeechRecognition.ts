@@ -9,7 +9,6 @@ interface SpeechRecognitionHook {
   startListening: () => void
   stopListening: () => void
   resetTranscript: () => void
-  error: string | null
 }
 
 export function useSpeechRecognition(): SpeechRecognitionHook {
@@ -17,105 +16,134 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
   const [interimTranscript, setInterimTranscript] = useState('')
   const [isListening, setIsListening] = useState(false)
   const [isSupported, setIsSupported] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const recognitionRef = useRef<any>(null)
+  const finalTranscriptRef = useRef('')
 
   useEffect(() => {
     if (typeof window === 'undefined') return
 
     const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition
 
-    if (!SpeechRecognition) return
+    if (!SpeechRecognition) {
+      setIsSupported(false)
+      return
+    }
 
     setIsSupported(true)
+
     const recognition = new SpeechRecognition()
-    recognition.continuous = true // Bolte waqt short pause hone par stop na ho
-    recognition.interimResults = true
-    recognition.lang = 'en-US' // Standard browser English engine support
+    
+    // KEY SETTINGS to prevent duplicates:
+    recognition.continuous = true        // Keep listening
+    recognition.interimResults = true    // Show words as spoken
+    recognition.lang = 'en-IN'
+    recognition.maxAlternatives = 1
+
+    recognition.onstart = () => {
+      setIsListening(true)
+      finalTranscriptRef.current = ''   // Reset on each start
+      setTranscript('')
+      setInterimTranscript('')
+    }
 
     recognition.onresult = (event: any) => {
-      let interim = ''
-      let final = ''
+      let finalText = ''
+      let interimText = ''
 
+      // CORRECT WAY: iterate only NEW results
+      // event.resultIndex tells us where new results start
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i]
+        const text = result[0].transcript
+
         if (result.isFinal) {
-          final += result[0].transcript
+          finalText += text + ' '
         } else {
-          interim += result[0].transcript
+          interimText += text
         }
       }
 
-      if (final) setTranscript(prev => prev + ' ' + final)
-      setInterimTranscript(interim)
+      // Accumulate FINAL results properly
+      if (finalText) {
+        finalTranscriptRef.current += finalText
+        setTranscript(finalTranscriptRef.current.trim())
+        setInterimTranscript('')
+      } else {
+        // Show interim (what user is currently saying)
+        setInterimTranscript(interimText)
+      }
     }
 
     recognition.onend = () => {
       setIsListening(false)
       setInterimTranscript('')
+      // Set final transcript from ref
+      if (finalTranscriptRef.current.trim()) {
+        setTranscript(finalTranscriptRef.current.trim())
+      }
     }
 
     recognition.onerror = (event: any) => {
-      console.error('Speech recognition error:', event.error)
-      if (event.error === 'not-allowed') {
-        setError('permission_denied')
-      } else {
-        setError(event.error)
+      if (event.error === 'no-speech') {
+        // User didn't speak — just stop quietly
+        setIsListening(false)
+        return
       }
+      if (event.error === 'aborted') {
+        // Manually stopped — ignore
+        return
+      }
+      console.warn('Speech recognition error:', event.error)
       setIsListening(false)
-      setInterimTranscript('')
     }
 
     recognitionRef.current = recognition
 
     return () => {
-      recognition.abort()
+      try {
+        recognition.stop()
+      } catch {}
     }
   }, [])
 
   const startListening = useCallback(() => {
-    if (!recognitionRef.current) return
-    
-    // Safety check: Abort existing instance first to prevent InvalidStateError
-    try {
-      recognitionRef.current.abort()
-    } catch (err) {
-      console.warn('Could not abort active recognition:', err)
-    }
+    if (!recognitionRef.current || isListening) return
 
+    // Reset everything before starting
+    finalTranscriptRef.current = ''
     setTranscript('')
     setInterimTranscript('')
-    setError(null)
-    
+
     try {
       recognitionRef.current.start()
-      setIsListening(true)
-    } catch (e) {
-      console.error('Could not start recognition:', e)
+    } catch (err) {
+      console.warn('Could not start recognition:', err)
     }
-  }, [])
+  }, [isListening])
 
   const stopListening = useCallback(() => {
     if (!recognitionRef.current || !isListening) return
-    recognitionRef.current.stop()
+    try {
+      recognitionRef.current.stop()
+    } catch {}
     setIsListening(false)
   }, [isListening])
 
   const resetTranscript = useCallback(() => {
+    finalTranscriptRef.current = ''
     setTranscript('')
     setInterimTranscript('')
-    setError(null)
   }, [])
 
   return {
-    transcript: transcript.trim(),
+    transcript,
     interimTranscript,
     isListening,
     isSupported,
     startListening,
     stopListening,
-    resetTranscript,
-    error,
+    resetTranscript
   }
 }

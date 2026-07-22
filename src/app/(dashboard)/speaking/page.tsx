@@ -63,8 +63,7 @@ export default function SpeakingPage() {
     isSupported,
     startListening,
     stopListening,
-    resetTranscript,
-    error: recognitionError
+    resetTranscript
   } = useSpeechRecognition()
 
   const { speak, stopSpeaking, speakSlower, isSpeaking, isSupported: ttsSupported } = useSpeechSynthesis()
@@ -185,13 +184,7 @@ export default function SpeakingPage() {
     }
   }, [])
 
-  // Handle Speech Recognition Error (like microphone permission denied)
-  useEffect(() => {
-    if (recognitionError === 'permission_denied') {
-      toast.error('Microphone access denied. Please check your browser settings to continue.')
-      setMicState('idle')
-    }
-  }, [recognitionError])
+
 
   // Sync mic state when recognition stops automatically
   useEffect(() => {
@@ -784,15 +777,27 @@ export default function SpeakingPage() {
         
         {/* Text input field (like WhatsApp message box) */}
         <div className="flex-1 bg-slate-800 rounded-full px-4 py-2.5 flex items-center min-h-[44px]">
-          <span className="text-slate-500 text-sm select-none">
-            {micState === 'listening' ? (
-              <span className="text-red-400 animate-pulse font-medium">● {interimTranscript || transcript || 'Sun raha hoon...'}</span>
-            ) : transcript ? (
-              <span className="text-slate-200">{transcript}</span>
-            ) : (
-              'Yahan bolne ke liye mic dabao...'
-            )}
-          </span>
+          {isListening ? (
+            <span className="text-sm">
+              {transcript && (
+                <span className="text-white">{transcript} </span>
+              )}
+              {interimTranscript && (
+                <span className="text-slate-400 italic">{interimTranscript}</span>
+              )}
+              {!transcript && !interimTranscript && (
+                <span className="text-red-400 animate-pulse text-xs">
+                  ● Sun raha hoon...
+                </span>
+              )}
+            </span>
+          ) : transcript ? (
+            <span className="text-slate-200 text-sm">{transcript}</span>
+          ) : (
+            <span className="text-slate-500 text-sm">
+              Yahan bolne ke liye mic dabao...
+            </span>
+          )}
         </div>
 
         {/* WhatsApp-style mic button - right side circle */}

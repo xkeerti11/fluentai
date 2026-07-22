@@ -40,8 +40,7 @@ export default function GrammarModulePage() {
     isSupported,
     startListening,
     stopListening,
-    resetTranscript,
-    error: recognitionError
+    resetTranscript
   } = useSpeechRecognition()
 
   const { speak, stopSpeaking, isSpeaking } = useSpeechSynthesis()
@@ -94,12 +93,7 @@ export default function GrammarModulePage() {
     }
   }, [isListening]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (recognitionError === 'permission_denied') {
-      toast.error('Microphone access blocked. Please allow mic permissions in your browser settings.')
-      setMicState('idle')
-    }
-  }, [recognitionError])
+
 
   // Scroll chat bottom
   useEffect(() => {
@@ -533,11 +527,17 @@ export default function GrammarModulePage() {
                   </div>
 
                   {/* Bottom live transcript info */}
-                  {micState === 'listening' && (
-                    <div className="text-[10px] italic text-slate-400 bg-slate-900/50 px-3 py-1.5 rounded-lg border border-slate-800 mb-2 flex-shrink-0">
-                      🎤 {transcript || interimTranscript || 'Bolna shuru karein...'}
+                  {isListening ? (
+                    <div className="text-[10px] bg-slate-900/50 px-3 py-1.5 rounded-lg border border-slate-800 mb-2 flex-shrink-0">
+                      🎤 {transcript && <span className="text-white">{transcript} </span>}
+                      {interimTranscript && <span className="text-slate-400 italic">{interimTranscript}</span>}
+                      {!transcript && !interimTranscript && <span className="text-red-400 animate-pulse text-xs">● Sun raha hoon...</span>}
                     </div>
-                  )}
+                  ) : transcript ? (
+                    <div className="text-[10px] text-slate-200 bg-slate-900/50 px-3 py-1.5 rounded-lg border border-slate-800 mb-2 flex-shrink-0">
+                      🎤 {transcript}
+                    </div>
+                  ) : null}
 
                   {/* Simple record controls */}
                   <div className="flex justify-center items-center py-2 flex-shrink-0 border-t border-slate-800/50">
