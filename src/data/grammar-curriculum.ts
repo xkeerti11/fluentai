@@ -607,5 +607,80 @@ export const GRAMMAR_LESSONS: GrammarLesson[] = [
         { id: 5, question: `What is the objective of ${title}?`, options: ['Objective A', 'Objective B', 'Objective C', 'Objective D'], answer: 0, explanation_hindi: 'Objective A highlights the correct grammar logic.' }
       ]
     };
-  })
+  }),
+
+  // Lesson 47 — Fully written irregular verbs lesson
+  {
+    id: 47,
+    level: 'A1',
+    day: 7,
+    title: 'Irregular Verbs — Three Forms',
+    title_hindi: 'Irregular Verbs — Teen Roop (V1, V2, V3)',
+    concept_hindi: 'Kuch verbs ki past form regular nahi hoti — inhe yaad karna padta hai. Regular verbs mein sirf "-ed" lagata hai (work → worked), lekin irregular verbs ka past form alag hota hai. Jaise: go → went → gone, eat → ate → eaten, write → wrote → written.',
+    formula: 'V1 (Present/Base) | V2 (Simple Past) | V3 (Past Participle — "have/has/had" ke saath)',
+    formula_example: 'go | went | gone — I go (V1) · I went (V2) · I have gone (V3)',
+    examples: [
+      {
+        wrong: 'I goed to market yesterday.',
+        right: 'I went to market yesterday.',
+        hindi: 'Main kal market gaya. (go ka V2 = went, "goed" galat hai)'
+      },
+      {
+        wrong: 'She eated all the food.',
+        right: 'She ate all the food.',
+        hindi: 'Usne saara khana khaya. (eat ka V2 = ate, "eated" galat hai)'
+      },
+      {
+        wrong: 'He has wrote the letter.',
+        right: 'He has written the letter.',
+        hindi: 'Usne letter likh diya hai. (have ke saath V3 = written, "wrote" V2 hai)'
+      }
+    ],
+    practice_prompt: 'Practice irregular verb forms with the student. Ask them to make sentences using common verbs (go, eat, write, buy, take) in simple past (V2) and present perfect (have + V3). Gently correct wrong forms — do not say "wrong", instead naturally use the correct form in your next sentence.',
+    tips: [
+      'Regular verbs: verb + ed (work → worked, play → played)',
+      'Irregular verbs: alag roop yaad karna padta hai (go → went → gone)',
+      'V2 = Simple past: Yesterday, I went to school.',
+      'V3 = Perfect tense ke saath: I have gone. She has eaten. He had written.',
+      'Same V2 & V3: buy→bought→bought, think→thought→thought, teach→taught→taught',
+      'Same teeno: put→put→put, cut→cut→cut, hit→hit→hit (aasaan hain!)'
+    ],
+    questions: [
+      {
+        id: 1,
+        question: 'I ______ to the market yesterday. (go)',
+        options: ['goed', 'went', 'gone', 'goes'],
+        answer: 1,
+        explanation_hindi: '"Go" ka simple past (V2) "went" hota hai. "Goed" galat hai kyunki "go" irregular verb hai.'
+      },
+      {
+        id: 2,
+        question: 'She has ______ all the food. (eat)',
+        options: ['ate', 'eaten', 'eat', 'eated'],
+        answer: 1,
+        explanation_hindi: '"Have/has" ke baad hamesha V3 aata hai. "Eat" ka V3 = "eaten". "Ate" V2 hai.'
+      },
+      {
+        id: 3,
+        question: 'He ______ me a gift last week. (give)',
+        options: ['gived', 'given', 'gave', 'give'],
+        answer: 2,
+        explanation_hindi: '"Give" ka simple past (V2) "gave" hota hai. Sentence mein "last week" hai, isliye simple past use hoga.'
+      },
+      {
+        id: 4,
+        question: 'Which set shows CORRECT V1 → V2 → V3?',
+        options: ['write → writed → writed', 'buy → buyed → buyed', 'take → took → taken', 'run → runned → runned'],
+        answer: 2,
+        explanation_hindi: '"take → took → taken" correct hai. Baaki teeno mein "-ed" galat lagaya gaya hai — ye sab irregular verbs hain.'
+      },
+      {
+        id: 5,
+        question: 'I have ______ this book before. (read)',
+        options: ['read', 'readed', 'red', 'reads'],
+        answer: 0,
+        explanation_hindi: '"Read" ka V3 bhi "read" hi hota hai (pronunciation alag hota hai: "red"). "Have" ke baad V3 aata hai.'
+      }
+    ]
+  }
 ];

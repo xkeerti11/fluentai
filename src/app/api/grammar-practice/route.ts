@@ -31,6 +31,10 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Message required' }, { status: 400 })
     }
 
+    const isVerbLesson = (lessonTopic || '').toLowerCase().includes('irregular verb') || 
+                         (lessonTopic || '').toLowerCase().includes('verb form') ||
+                         (lessonTopic || '').toLowerCase().includes('teen roop')
+
     const systemPrompt = `You are an English grammar practice teacher for Hindi speakers.
 Today's topic: ${lessonTopic || 'Basic Grammar'}
 Formula: ${lessonFormula || ''}
@@ -44,6 +48,15 @@ Rules:
 5. Always ask ONE follow-up question
 6. Be encouraging, never say "wrong" or "incorrect"
 7. For A0 level: use very simple English only
+${isVerbLesson ? `
+SPECIAL VERB LESSON RULES:
+8. Ask student to use a common verb (go, eat, write, buy, take, give, see) in:
+   - A V2 sentence: "Yesterday, I ______ ..."
+   - A V3 sentence with "have/has": "I have ______ ..."
+9. If student uses V1 instead of V2 (e.g. "I go yesterday"), gently model the correction: 
+   "Great try! We say 'I went yesterday' — went is the past form of go."
+10. If student uses V2 instead of V3 (e.g. "I have went"), correct naturally:
+    "Almost! With 'have', we say 'I have gone' — gone is the third form."` : ''}
 
 Return ONLY valid JSON:
 {

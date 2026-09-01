@@ -43,9 +43,20 @@ export interface VocabularyWord {
   id: string
   word: string
   meaning_hindi: string
+  pronunciation: string
+  hindi_pronunciation?: string
   example_sentence: string
+  example_hindi?: string
+  verb_sentence_hindi?: string
+  verb_sentence_english?: string
+  memory_trick?: string
   level: Level
+  topic: string
   category: string
+  word_type?: 'word' | 'verb' | 'phrasal_verb' | 'idiom'
+  v1?: string
+  v2?: string
+  v3?: string
   created_at: string
 }
 

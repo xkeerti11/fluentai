@@ -96,10 +96,17 @@ export async function POST(req: Request) {
     } else {
       let basePrompt = buildMainTutorPrompt(userName, userLevel, userGoal, grammarTopic, vocabWords, memoryString)
       if (mode === 'lesson') {
+        const commonIrregularVerbs = ['go','come','see','eat','drink','sleep','speak','take','give','find','tell','buy','write','run','meet','know','think','make','get','feel','fall','leave','forget','hear','lose','pay','sell','send','teach','wear','win','bring','catch','keep','hold','break','build','grow','drive','fly','throw','understand','stand','sit']
+        const vocabList = (vocabWords || '').toLowerCase()
+        const hasVerb = commonIrregularVerbs.some(v => vocabList.includes(v))
         basePrompt += `\n\nSTRICT DAILY LESSON PLAN INSTRUCTIONS:
 You are teaching a structured daily lesson. Follow this lesson plan:
 - Phase 1: Introduce and review today's grammar topic (${grammarTopic}). Ask questions to check understanding.
-- Phase 2: Guide user to practice today's focus vocabulary words (${vocabWords}) in context.
+- Phase 2: Guide user to practice today's focus vocabulary words (${vocabWords}) in context.${hasVerb ? `
+  VERB PRACTICE NOTE: Some of today's words are irregular verbs. When practicing them:
+  • Ask user to make a V2 sentence (simple past): "Yesterday, I ____"
+  • Ask user to make a V3 sentence (present perfect): "I have ____"
+  • If user uses wrong verb form, correct gently by using the right form naturally in your reply.` : ''}
 - Phase 3: Transition to free-flowing conversation using all the concepts practiced.`
       }
       systemPrompt = basePrompt
