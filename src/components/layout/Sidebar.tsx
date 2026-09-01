@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Mic, LayoutDashboard, BookOpen, CheckSquare, BarChart2, LogOut, Settings } from 'lucide-react'
+import { Mic, LayoutDashboard, BookOpen, CheckSquare, BarChart2, LogOut, Settings, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 import { LevelBadge } from '@/components/ui/Badge'
 import { useAuth } from '@/hooks/useAuth'
@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { href: '/speaking', label: 'Speaking', icon: Mic },
   { href: '/grammar', label: 'Grammar', icon: CheckSquare },
   { href: '/vocabulary', label: 'Vocabulary', icon: BookOpen },
+  { href: '/verbs', label: 'Verb Mastery', icon: Sparkles },
   { href: '/progress', label: 'Progress', icon: BarChart2 },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
