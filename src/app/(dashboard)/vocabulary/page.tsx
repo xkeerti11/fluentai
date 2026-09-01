@@ -11,9 +11,8 @@ import { useSpeechSynthesis } from '@/hooks/useSpeechSynthesis'
 import { supabase } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils/cn'
 import { VOCABULARY_WORDS, VOCABULARY_TOPICS, VocabularyWord } from '@/data/vocabulary-curriculum'
-import VerbCard from '@/components/vocabulary/VerbCard'
 
-type TabType = 'today' | 'topics' | 'verbs' | 'revision' | 'quiz'
+type TabType = 'today' | 'topics' | 'revision' | 'quiz'
 
 interface LearnedWordJoin {
   word_id: string
@@ -64,10 +63,6 @@ export default function VocabularyPage() {
   const [wrongAnswersList, setWrongAnswersList] = useState<VocabularyWord[]>([])
   const [savingWordState, setSavingWordState] = useState<{[key: string]: boolean}>({})
 
-  // Verbs tab state
-  const [verbLevelFilter, setVerbLevelFilter] = useState<string>('All')
-  const [verbFlipped, setVerbFlipped] = useState<{ [word: string]: boolean }>({})
-
   const handleSaveWord = async (wordStr: string) => {
     setSavingWordState(prev => ({ ...prev, [wordStr]: true }))
     try {
@@ -96,7 +91,7 @@ export default function VocabularyPage() {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search)
       const tab = params.get('tab')
-      if (tab === 'revision' || tab === 'topics' || tab === 'quiz' || tab === 'today' || tab === 'verbs') {
+      if (tab === 'revision' || tab === 'topics' || tab === 'quiz' || tab === 'today') {
         setActiveTab(tab as TabType)
       }
     }
@@ -353,7 +348,6 @@ export default function VocabularyPage() {
         {[
           { id: 'today', label: '📅 Aaj ke Words', count: todayWords.length - Object.keys(todayReviewed).length },
           { id: 'topics', label: '📚 Sab Topics' },
-          { id: 'verbs', label: '🔤 Verbs', count: VOCABULARY_WORDS.filter(w => w.word_type === 'verb').length },
           { id: 'revision', label: '🔄 Revision', count: revisionWords.length - revisionReviewed.size },
           { id: 'quiz', label: '❓ Quiz' }
         ].map(t => (
@@ -405,20 +399,8 @@ export default function VocabularyPage() {
                       <h3 className="text-sm font-bold text-slate-400 mt-0.5">Naya word seekhein aur click karke check karein</h3>
                     </div>
 
-                    {/* Flipping card — uses VerbCard for verbs, standard flip card otherwise */}
+                    {/* Flipping card */}
                     <div className="flex justify-center py-6">
-                      {todayWords[todayIdx].word_type === 'verb' ? (
-                        <div className="w-full max-w-sm">
-                          <VerbCard
-                            word={todayWords[todayIdx]}
-                            isFlipped={isFlippedToday}
-                            onFlip={() => setIsFlippedToday(!isFlippedToday)}
-                            onKnow={() => handleReviewWord(todayWords[todayIdx], 'known')}
-                            onLearning={() => handleReviewWord(todayWords[todayIdx], 'learning')}
-                            isLogging={loggingReview}
-                          />
-                        </div>
-                      ) : (
                       <div 
                         onClick={() => setIsFlippedToday(!isFlippedToday)}
                         className="w-full max-w-sm h-64 perspective-1000 cursor-pointer"
@@ -459,7 +441,6 @@ export default function VocabularyPage() {
 
                         </div>
                       </div>
-                      )}
                     </div>
 
                     {/* Study Controls */}
@@ -533,67 +514,6 @@ export default function VocabularyPage() {
                 )}
               </motion.div>
             )}
-            {/* TAB: VERBS */}
-            {activeTab === 'verbs' && (() => {
-              const levelOrder = ['A0', 'A1', 'A2', 'B1', 'B2']
-              const allVerbs = VOCABULARY_WORDS
-                .filter(w => w.word_type === 'verb')
-                .filter(w => verbLevelFilter === 'All' || w.level === verbLevelFilter)
-                .sort((a, b) => levelOrder.indexOf(a.level) - levelOrder.indexOf(b.level))
-
-              return (
-                <motion.div key="verbs" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-5 flex-1">
-                  <div className="flex items-center justify-between flex-wrap gap-3">
-                    <div>
-                      <h2 className="text-lg font-bold text-slate-200">Irregular Verbs 🔤</h2>
-                      <p className="text-xs text-slate-400">
-                        {allVerbs.length} verbs — V1 (present) · V2 (simple past) · V3 (participle)
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Level filter pills */}
-                  <div className="flex flex-wrap gap-2">
-                    {['All', 'A0', 'A1', 'A2', 'B1'].map(lvl => (
-                      <button
-                        key={lvl}
-                        onClick={() => setVerbLevelFilter(lvl)}
-                        className={cn(
-                          'px-3 py-1 rounded-lg text-xs font-bold transition-all border',
-                          verbLevelFilter === lvl
-                            ? 'bg-emerald-600 text-white border-emerald-500 shadow'
-                            : 'bg-slate-900 text-slate-400 border-slate-700 hover:border-slate-500'
-                        )}
-                      >
-                        {lvl}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Verb cards — scrollable reference list */}
-                  <div className="space-y-4 max-h-[560px] overflow-y-auto pr-1">
-                    {allVerbs.length === 0 ? (
-                      <div className="text-center py-12 text-slate-500 text-sm">
-                        Is level mein koi verb nahi mili.
-                      </div>
-                    ) : (
-                      allVerbs.map(verb => (
-                        <VerbCard
-                          key={verb.word}
-                          word={verb}
-                          isFlipped={verbFlipped[verb.word] || false}
-                          onFlip={() => setVerbFlipped(prev => ({ ...prev, [verb.word]: !prev[verb.word] }))}
-                          onKnow={() => handleReviewWord(verb, 'known')}
-                          onLearning={() => handleReviewWord(verb, 'learning')}
-                          isLogging={loggingReview}
-                        />
-                      ))
-                    )}
-                  </div>
-                </motion.div>
-              )
-            })()}
-
             {/* TAB 2: ALL TOPICS */}
             {activeTab === 'topics' && (
               <motion.div key="topics" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6 flex-1">

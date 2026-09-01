@@ -1,45 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { VERBS, getVerbsByCategory, getVerbsByLevel, getDailyVerbs, VerbEntry } from '@/data/verb-curriculum'
-import { createServerSupabase } from '@/lib/supabase/server'
+import { ALL_500_VERBS, getVerbsByDay, getVerbsByCategory, getVerbsByLevel, VerbEntry } from '@/data/verb-curriculum'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
-    const level = searchParams.get('level') || 'A1'
+    const day = searchParams.get('day')
+    const level = searchParams.get('level')
     const category = searchParams.get('category')
-    const mode = searchParams.get('mode') || 'all' // 'all' | 'daily'
-    const count = parseInt(searchParams.get('count') || '10', 10)
 
-    if (mode === 'daily') {
-      let seenWords = new Set<string>()
-      try {
-        const supabase = await createServerSupabase()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          const { data: learned } = await supabase
-            .from('learned_words')
-            .select('vocabulary(word)')
-            .eq('user_id', user.id)
-          
-          if (learned) {
-            learned.forEach((item: any) => {
-              if (item.vocabulary?.word) {
-                seenWords.add(item.vocabulary.word.toLowerCase())
-              }
-            })
-          }
-        }
-      } catch (err) {
-        // Fallback gracefully without auth error
-      }
-
-      const daily = getDailyVerbs(seenWords, level, count)
-      return NextResponse.json({ success: true, data: daily, total: daily.length })
+    if (day) {
+      const dayNum = parseInt(day, 10)
+      const dayVerbs = getVerbsByDay(dayNum)
+      return NextResponse.json({ success: true, data: dayVerbs, total: dayVerbs.length })
     }
 
-    let filtered = [...VERBS]
+    let filtered = [...ALL_500_VERBS]
 
     if (category && category !== 'all') {
       filtered = filtered.filter(v => v.category === category)

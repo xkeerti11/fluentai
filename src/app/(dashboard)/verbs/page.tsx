@@ -1,20 +1,27 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Sparkles, BookOpen, CheckCircle2, HelpCircle, RotateCcw, 
   Search, Filter, Award, ArrowRight, ArrowLeft, Volume2, 
-  Check, X, Zap, Target, Briefcase, Laptop, Users
+  Check, X, Zap, Target, Briefcase, Laptop, Users, Bot, Send, User, ChevronLeft, ChevronRight, Calendar
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/useAuth'
 import { useSpeechSynthesis } from '@/hooks/useSpeechSynthesis'
 import { cn } from '@/lib/utils/cn'
 import VerbCard from '@/components/vocabulary/VerbCard'
-import { VERBS, VERB_CATEGORIES, VerbEntry } from '@/data/verb-curriculum'
+import { ALL_500_VERBS, getVerbsByDay, TOTAL_VERB_DAYS, VERB_CATEGORIES, VerbEntry } from '@/data/verb-curriculum'
 
-type VerbTabType = 'learn' | 'all' | 'practice' | 'progress'
+type VerbTabType = 'today' | 'ai_practice' | 'quiz' | 'all'
+
+interface ChatMessage {
+  id: string
+  sender: 'ai' | 'user'
+  text: string
+  feedback?: string
+}
 
 interface QuizQuestion {
   id: number
@@ -31,24 +38,24 @@ export default function VerbsPage() {
   const { profile } = useAuth()
   const { speak } = useSpeechSynthesis()
 
-  const [activeTab, setActiveTab] = useState<VerbTabType>('learn')
-  const [loading, setLoading] = useState(false)
-
-  // ─── TAB 1: LEARN (1-by-1 Flashcard Mode) ───
-  const [learnList, setLearnList] = useState<VerbEntry[]>([])
+  const [activeTab, setActiveTab] = useState<VerbTabType>('today')
+  const [selectedDay, setSelectedDay] = useState<number>(1)
+  
+  // Progress tracking in LocalStorage
+  const [verbProgress, setVerbProgress] = useState<{ [word: string]: 'known' | 'learning' }>({})
+  
+  // ─── TAB 1: TODAY'S 15 VERBS (Flashcard state) ───
   const [currentIdx, setCurrentIdx] = useState(0)
   const [isFlipped, setIsFlipped] = useState(false)
-  const [learnProgress, setLearnProgress] = useState<{ [word: string]: 'known' | 'learning' }>({})
-  const [selectedLevel, setSelectedLevel] = useState<string>('all')
-  const [selectedCategory, setSelectedCategory] = useState<string>('all')
+  const [dayReviewed, setDayReviewed] = useState<{ [word: string]: 'known' | 'learning' }>({})
 
-  // ─── TAB 2: ALL VERBS (Search & Reference) ───
-  const [searchQuery, setSearchQuery] = useState('')
-  const [refLevel, setRefLevel] = useState('all')
-  const [refCategory, setRefCategory] = useState('all')
-  const [flippedCards, setFlippedCards] = useState<{ [word: string]: boolean }>({})
+  // ─── TAB 2: AI VERB PRACTICE (Chat state) ───
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [chatInput, setChatInput] = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
+  const chatBottomRef = useRef<HTMLDivElement>(null)
 
-  // ─── TAB 3: PRACTICE QUIZ ───
+  // ─── TAB 3: QUIZ STATE ───
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([])
   const [quizIdx, setQuizIdx] = useState(0)
   const [quizTypedAnswer, setQuizTypedAnswer] = useState('')
@@ -58,12 +65,23 @@ export default function VerbsPage() {
   const [quizFinished, setQuizFinished] = useState(false)
   const [wrongAnswers, setWrongAnswers] = useState<QuizQuestion[]>([])
 
+  // ─── TAB 4: ALL VERBS (Search & filter) ───
+  const [searchQuery, setSearchQuery] = useState('')
+  const [refCategory, setRefCategory] = useState('all')
+  const [refLevel, setRefLevel] = useState('all')
+  const [refDay, setRefDay] = useState<string>('all')
+  const [flippedCards, setFlippedCards] = useState<{ [word: string]: boolean }>({})
+
   // Load progress from localStorage on mount
   useEffect(() => {
     try {
       const saved = localStorage.getItem('fluentai_verb_progress')
       if (saved) {
-        setLearnProgress(JSON.parse(saved))
+        setVerbProgress(JSON.parse(saved))
+      }
+      const savedDay = localStorage.getItem('fluentai_verb_active_day')
+      if (savedDay) {
+        setSelectedDay(parseInt(savedDay, 10) || 1)
       }
     } catch (e) {
       console.error('Error loading verb progress', e)
@@ -72,15 +90,16 @@ export default function VerbsPage() {
 
   // Save progress helper
   const saveProgressState = (word: string, status: 'known' | 'learning') => {
-    const updated = { ...learnProgress, [word]: status }
-    setLearnProgress(updated)
+    const updated = { ...verbProgress, [word]: status }
+    setVerbProgress(updated)
+    setDayReviewed(prev => ({ ...prev, [word]: status }))
     try {
       localStorage.setItem('fluentai_verb_progress', JSON.stringify(updated))
     } catch (e) {
       console.error('Error saving verb progress', e)
     }
 
-    // Also sync to review API in background if possible
+    // Sync to Supabase review endpoint in background
     fetch('/api/vocabulary/review', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -88,88 +107,110 @@ export default function VerbsPage() {
     }).catch(() => {})
   }
 
-  // Populate Learn List based on filters
-  useEffect(() => {
-    let filtered = [...VERBS]
-    if (selectedLevel !== 'all') {
-      filtered = filtered.filter(v => v.level === selectedLevel)
-    }
-    if (selectedCategory !== 'all') {
-      filtered = filtered.filter(v => v.category === selectedCategory)
-    }
-    // Prioritize learning or unreviewed
-    filtered.sort((a, b) => {
-      const statusA: string = learnProgress[a.word] || 'unseen'
-      const statusB: string = learnProgress[b.word] || 'unseen'
-      if (statusA === statusB) return 0
-      if (statusA === 'unseen') return -1
-      if (statusB === 'unseen') return 1
-      if (statusA === 'learning') return -1
-      return 1
-    })
+  // Today's 15 verbs for selected day
+  const todayVerbs = useMemo(() => {
+    return getVerbsByDay(selectedDay)
+  }, [selectedDay])
 
-    setLearnList(filtered.slice(0, 15))
+  // Reset card index when day changes
+  useEffect(() => {
     setCurrentIdx(0)
     setIsFlipped(false)
-  }, [selectedLevel, selectedCategory, learnProgress])
+    try {
+      localStorage.setItem('fluentai_verb_active_day', selectedDay.toString())
+    } catch (e) {}
+  }, [selectedDay])
 
-  // Handle Learn Actions
-  const handleMarkVerb = (status: 'known' | 'learning') => {
-    if (!learnList[currentIdx]) return
-    const currentWord = learnList[currentIdx].word
-    saveProgressState(currentWord, status)
+  // Scroll AI chat to bottom
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [chatMessages, aiLoading])
 
-    toast.success(status === 'known' ? 'Great! Marked as Mastered ⭐' : 'Saved for revision! 📖')
-
-    setTimeout(() => {
-      setIsFlipped(false)
-      if (currentIdx < learnList.length - 1) {
-        setCurrentIdx(prev => prev + 1)
+  // Initialize AI Practice message
+  const initAiPractice = () => {
+    const currentVerbsList = todayVerbs.slice(0, 5).map(v => `"${v.word}" (${v.meaning_hindi})`).join(', ')
+    setChatMessages([
+      {
+        id: '1',
+        sender: 'ai',
+        text: `Namaste! Aaj hum Day ${selectedDay} ke verbs practice karenge. Jaise ki ${currentVerbsList}.\n\nKya aap inme se kisi ek verb par Past Tense (V2) ya Present Perfect (V3) sentence bana sakte hain? Try kijiye!`
       }
-    }, 250)
+    ])
   }
 
-  // ─── Filtered reference verbs ───
-  const filteredRefVerbs = useMemo(() => {
-    return VERBS.filter(v => {
-      const matchSearch = v.word.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        v.meaning_hindi.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (v.v2 && v.v2.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (v.v3 && v.v3.toLowerCase().includes(searchQuery.toLowerCase()))
-      
-      const matchLevel = refLevel === 'all' || v.level === refLevel
-      const matchCategory = refCategory === 'all' || v.category === refCategory
+  const handleSendAiMessage = async () => {
+    if (!chatInput.trim() || aiLoading) return
+    const userText = chatInput.trim()
+    setChatInput('')
 
-      return matchSearch && matchLevel && matchCategory
-    })
-  }, [searchQuery, refLevel, refCategory])
+    const newMsg: ChatMessage = {
+      id: Date.now().toString(),
+      sender: 'user',
+      text: userText
+    }
+    setChatMessages(prev => [...prev, newMsg])
+    setAiLoading(true)
+
+    try {
+      // Send to chat API with verb tutor persona
+      const promptContext = `You are a friendly English coach evaluating a student sentence for Day ${selectedDay} verbs.
+Today's active verbs: ${todayVerbs.map(v => `${v.word} (V1:${v.v1}, V2:${v.v2}, V3:${v.v3})`).join(', ')}.
+Student's sentence: "${userText}".
+Provide constructive, encouraging feedback in simple Hinglish (Hindi + English). Check if they used V1, V2, or V3 correctly. If correct, praise them and challenge them with the next verb. If any grammar or tense mistake, gently correct it.`
+
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: promptContext }],
+          mode: 'lesson'
+        })
+      })
+
+      const json = await res.json()
+      const aiReply = json.data?.reply || json.reply || `Bahut badhiya attempt! Aapne achha sentence banaya. Agla sentence try karein!`
+
+      setChatMessages(prev => [...prev, {
+        id: (Date.now() + 1).toString(),
+        sender: 'ai',
+        text: aiReply
+      }])
+    } catch (err) {
+      setChatMessages(prev => [...prev, {
+        id: (Date.now() + 1).toString(),
+        sender: 'ai',
+        text: 'Achha prayas! Verb ka roop dhyan se check karein aur agla sentence banayein.'
+      }])
+    } finally {
+      setAiLoading(false)
+    }
+  }
 
   // ─── Quiz Generator ───
-  const startPracticeQuiz = () => {
-    // Pick 10 random verbs
-    const shuffled = [...VERBS].sort(() => Math.random() - 0.5).slice(0, 10)
-    
-    const questions: QuizQuestion[] = shuffled.map((verb, i) => {
-      const qType = i % 3 === 0 ? 'v2_fill' : (i % 3 === 1 ? 'v3_mcq' : 'form_triplet')
+  const startQuiz = () => {
+    // 10 questions based on active day verbs + past days
+    const candidates = [...todayVerbs, ...ALL_500_VERBS.filter(v => v.day < selectedDay)].slice(0, 30)
+    const shuffled = [...candidates].sort(() => Math.random() - 0.5).slice(0, 10)
 
+    const questions: QuizQuestion[] = shuffled.map((verb, i) => {
+      const qType = i % 2 === 0 ? 'v2_fill' : 'v3_mcq'
       if (qType === 'v2_fill') {
         const cleanV2 = verb.v2.split('/')[0].trim()
         return {
           id: i + 1,
           verb,
           type: 'v2_fill',
-          prompt: `Type the Simple Past (V2) form of "${verb.word.toUpperCase()}":`,
+          prompt: `Type the Simple Past (V2) form of "${verb.word.toUpperCase()}" (${verb.meaning_hindi}):`,
           sentenceHindi: verb.verb_sentence_hindi,
           correctAnswer: cleanV2,
-          explanation: `"${verb.word}" ka Past Tense (V2) form "${cleanV2}" hota hai. (${verb.hindi_pronunciation})`
+          explanation: `"${verb.word}" ka Past Tense (V2) "${cleanV2}" hota hai. (${verb.hindi_pronunciation})`
         }
-      } else if (qType === 'v3_mcq') {
+      } else {
         const cleanV3 = verb.v3.split('/')[0].trim()
-        // Generate believable distractors
         const distractors = [
           verb.v2.split('/')[0].trim(),
           verb.word + 'ed',
-          verb.word + 'en',
+          verb.word + 'ing',
           verb.v1.split('/')[0].trim()
         ].filter(opt => opt !== cleanV3)
 
@@ -179,31 +220,11 @@ export default function VerbsPage() {
           id: i + 1,
           verb,
           type: 'v3_mcq',
-          prompt: `Complete the sentence with correct V3 (Participle) form:\n"They have ______ (${verb.word}) successfully."`,
+          prompt: `Choose the correct V3 (Participle) form:\n"They have ______ (${verb.word}) successfully."`,
           sentenceHindi: verb.example_hindi,
           correctAnswer: cleanV3,
           options,
-          explanation: `Have / Has ke saath hamesha V3 "${cleanV3}" lagta hai.`
-        }
-      } else {
-        // Form Triplet
-        const correctTriplet = `${verb.v1} → ${verb.v2} → ${verb.v3}`
-        const options = [
-          correctTriplet,
-          `${verb.word} → ${verb.word}ed → ${verb.word}ed`,
-          `${verb.word} → ${verb.v2} → ${verb.word}ed`,
-          `${verb.word} → ${verb.word}ing → ${verb.v3}`
-        ].sort(() => Math.random() - 0.5)
-
-        return {
-          id: i + 1,
-          verb,
-          type: 'form_triplet',
-          prompt: `Which triplet represents the correct V1 → V2 → V3 for "${verb.word.toUpperCase()}" (${verb.meaning_hindi})?`,
-          sentenceHindi: `Hindi: ${verb.meaning_hindi} (${verb.hindi_pronunciation})`,
-          correctAnswer: correctTriplet,
-          options,
-          explanation: `Sahi forms: ${correctTriplet}`
+          explanation: `Have / Has ke saath hamesha V3 form "${cleanV3}" lagta hai.`
         }
       }
     })
@@ -216,7 +237,7 @@ export default function VerbsPage() {
     setQuizScore(0)
     setQuizFinished(false)
     setWrongAnswers([])
-    setActiveTab('practice')
+    setActiveTab('quiz')
   }
 
   const handleQuizSubmit = (answer: string) => {
@@ -257,18 +278,46 @@ export default function VerbsPage() {
     }
   }
 
-  // Progress stats calculation
-  const totalMastered = Object.values(learnProgress).filter(s => s === 'known').length
-  const totalLearning = Object.values(learnProgress).filter(s => s === 'learning').length
-  const totalRemaining = VERBS.length - (totalMastered + totalLearning)
+  // Handle Flashcard Study Action
+  const handleReviewVerb = (status: 'known' | 'learning') => {
+    if (!todayVerbs[currentIdx]) return
+    const cur = todayVerbs[currentIdx]
+    saveProgressState(cur.word, status)
+    toast.success(status === 'known' ? 'Marked as Mastered! ⭐' : 'Saved for practice! 📖')
+
+    setTimeout(() => {
+      setIsFlipped(false)
+      if (currentIdx < todayVerbs.length - 1) {
+        setCurrentIdx(prev => prev + 1)
+      }
+    }, 250)
+  }
+
+  // Filtered reference verbs for Tab 4
+  const filteredAllVerbs = useMemo(() => {
+    return ALL_500_VERBS.filter(v => {
+      const matchSearch = v.word.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        v.meaning_hindi.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (v.v2 && v.v2.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (v.v3 && v.v3.toLowerCase().includes(searchQuery.toLowerCase()))
+      
+      const matchCategory = refCategory === 'all' || v.category === refCategory
+      const matchLevel = refLevel === 'all' || v.level === refLevel
+      const matchDay = refDay === 'all' || v.day.toString() === refDay
+
+      return matchSearch && matchCategory && matchLevel && matchDay
+    })
+  }, [searchQuery, refCategory, refLevel, refDay])
+
+  const totalMastered = Object.values(verbProgress).filter(s => s === 'known').length
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto p-3 md:p-6 pb-24">
-      {/* Header */}
+    <div className="space-y-6 max-w-5xl mx-auto p-3 md:p-6 pb-24">
+      {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
         <div>
           <div className="flex items-center gap-2.5">
-            <span className="p-2 rounded-xl bg-gradient-to-tr from-blue-600 to-purple-600 text-white shadow-lg">
+            <span className="p-2 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg">
               <Sparkles size={24} />
             </span>
             <div>
@@ -276,51 +325,68 @@ export default function VerbsPage() {
                 Verb Mastery 🔤
               </h1>
               <p className="text-xs md:text-sm text-slate-400 font-medium">
-                V1, V2, V3 Forms • Business & Freelance Verbs • Interactive Quiz Practice
+                Roz 15 Verbs • 500+ Curated Verbs (V1-V2-V3) • AI Practice & Quizzes
               </p>
             </div>
           </div>
         </div>
 
-        {/* Action button */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={startPracticeQuiz}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs md:text-sm font-extrabold shadow-lg transition-all"
-          >
-            <Target size={16} />
-            Start Practice Quiz
-          </button>
+        {/* Day Selector & Mastered Badge */}
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Day Selector */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-800 text-xs font-semibold text-slate-300">
+            <Calendar size={14} className="text-blue-400" />
+            <span>Day:</span>
+            <select
+              value={selectedDay}
+              onChange={(e) => setSelectedDay(parseInt(e.target.value, 10))}
+              className="bg-slate-900 text-blue-400 font-extrabold rounded-lg px-2 py-0.5 border border-slate-700 focus:outline-none"
+            >
+              {Array.from({ length: TOTAL_VERB_DAYS }, (_, i) => i + 1).map(d => (
+                <option key={d} value={d}>
+                  Day {d} ({15} verbs)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Mastered Badge */}
+          <div className="px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-800 text-xs font-semibold text-slate-300">
+            Mastered: <span className="font-extrabold text-emerald-400">{totalMastered} verbs</span>
+          </div>
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-2 p-1.5 rounded-2xl bg-slate-900/90 border border-slate-800 w-fit">
         {[
-          { id: 'learn', label: '📅 Seekho (1-by-1)', count: learnList.length },
-          { id: 'all', label: '📚 Sabhi Verbs', count: VERBS.length },
-          { id: 'practice', label: '🎯 Practice Quiz' },
-          { id: 'progress', label: '📊 Progress Stats' }
+          { id: 'today', label: `📅 Aaj ke 15 Verbs (Day ${selectedDay})`, count: todayVerbs.length - Object.keys(dayReviewed).length },
+          { id: 'ai_practice', label: '🤖 AI Verb Practice' },
+          { id: 'quiz', label: '❓ Verb Quiz' },
+          { id: 'all', label: '📚 Sabhi 500 Verbs', count: ALL_500_VERBS.length }
         ].map(t => (
           <button
             key={t.id}
             onClick={() => {
               setActiveTab(t.id as VerbTabType)
-              if (t.id === 'practice' && quizQuestions.length === 0) {
-                startPracticeQuiz()
+              if (t.id === 'ai_practice' && chatMessages.length === 0) {
+                initAiPractice()
+              }
+              if (t.id === 'quiz' && quizQuestions.length === 0) {
+                startQuiz()
               }
             }}
             className={cn(
-              'flex items-center gap-2 px-4 py-2 rounded-xl text-xs md:text-sm font-extrabold transition-all',
+              'flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs md:text-sm font-extrabold transition-all',
               activeTab === t.id
                 ? 'bg-blue-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                : 'text-slate-400 hover:text-slate-200 bg-transparent'
             )}
           >
             <span>{t.label}</span>
-            {t.count !== undefined && (
+            {t.count !== undefined && t.count > 0 && (
               <span className={cn(
-                'text-[10px] px-1.5 py-0.5 rounded-full font-black',
+                'px-1.5 py-0.5 rounded-full text-[10px] font-black',
                 activeTab === t.id ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
               )}>
                 {t.count}
@@ -330,215 +396,206 @@ export default function VerbsPage() {
         ))}
       </div>
 
-      {/* ─── TAB 1: LEARN (1-by-1 Flashcard Mode) ─── */}
-      {activeTab === 'learn' && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-          {/* Filters for learning */}
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/50 p-3 rounded-2xl border border-slate-800">
-            {/* Category Filter */}
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                { id: 'all', label: 'Sabhi Verbs' },
-                { id: 'irregular', label: '🔀 Irregular' },
-                { id: 'business', label: '💼 Business' },
-                { id: 'freelance', label: '🖥️ Freelance' },
-                { id: 'interview', label: '🎯 Interview' },
-                { id: 'regular', label: '📝 Regular' }
-              ].map(cat => (
-                <button
-                  key={cat.id}
-                  onClick={() => setSelectedCategory(cat.id)}
-                  className={cn(
-                    'px-2.5 py-1 rounded-lg text-xs font-bold transition-all border',
-                    selectedCategory === cat.id
-                      ? 'bg-blue-600 text-white border-blue-500'
-                      : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:border-slate-600'
-                  )}
-                >
-                  {cat.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Level Filter */}
-            <div className="flex items-center gap-1">
-              <span className="text-[11px] font-bold text-slate-500 mr-1">Level:</span>
-              {['all', 'A0', 'A1', 'A2', 'B1', 'B2'].map(lvl => (
-                <button
-                  key={lvl}
-                  onClick={() => setSelectedLevel(lvl)}
-                  className={cn(
-                    'px-2 py-0.5 rounded-md text-[11px] font-bold transition-all border',
-                    selectedLevel === lvl
-                      ? 'bg-purple-600 text-white border-purple-500'
-                      : 'bg-slate-800 text-slate-400 border-slate-700'
-                  )}
-                >
-                  {lvl.toUpperCase()}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Flashcard Area */}
-          {learnList.length === 0 ? (
-            <div className="text-center py-16 bg-slate-900/50 rounded-3xl border border-slate-800 p-6 space-y-3">
-              <p className="text-4xl">🎉</p>
-              <h3 className="text-lg font-bold text-slate-200">Sabhi selected verbs seekh liye hain!</h3>
-              <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                Filter badal kar doosri categories ya levels ke verbs seekhein, ya Practice Quiz dekar test karein.
-              </p>
-              <button
-                onClick={() => { setSelectedCategory('all'); setSelectedLevel('all'); }}
-                className="px-4 py-2 bg-blue-600 text-white font-bold rounded-xl text-xs mt-2"
-              >
-                Reset Filters
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {/* Header with counter */}
-              <div className="flex items-center justify-between px-2">
-                <span className="text-xs font-black text-blue-400 uppercase tracking-widest">
-                  Verb {currentIdx + 1} of {learnList.length}
+      {/* ─── TAB 1: TODAY'S 15 VERBS (1-by-1 Flashcard UI Matching Images 3 & 4) ─── */}
+      {activeTab === 'today' && (
+        <div className="rounded-2xl border p-6 min-h-[460px] flex flex-col justify-between"
+          style={{ background: '#1E293B', borderColor: '#334155' }}>
+          
+          {todayVerbs.length === 0 ? (
+            <div className="text-center py-20 text-slate-400">Loading Day {selectedDay} verbs...</div>
+          ) : currentIdx < todayVerbs.length ? (
+            <div className="space-y-6 flex-1 flex flex-col justify-between">
+              {/* Header inside card container */}
+              <div>
+                <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">
+                  TODAY'S VERB {currentIdx + 1} OF {todayVerbs.length} (DAY {selectedDay})
                 </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    disabled={currentIdx === 0}
-                    onClick={() => { setIsFlipped(false); setCurrentIdx(prev => Math.max(0, prev - 1)); }}
-                    className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white disabled:opacity-30"
-                  >
-                    <ArrowLeft size={16} />
-                  </button>
-                  <button
-                    disabled={currentIdx >= learnList.length - 1}
-                    onClick={() => { setIsFlipped(false); setCurrentIdx(prev => Math.min(learnList.length - 1, prev + 1)); }}
-                    className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white disabled:opacity-30"
-                  >
-                    <ArrowRight size={16} />
-                  </button>
-                </div>
+                <h3 className="text-sm font-bold text-slate-400 mt-0.5">
+                  Naya verb seekhein aur click karke check karein
+                </h3>
               </div>
 
-              {/* Progress bar */}
-              <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300"
-                  style={{ width: `${((currentIdx + 1) / learnList.length) * 100}%` }}
+              {/* Centered Flip Card */}
+              <div className="flex justify-center py-4">
+                <VerbCard
+                  word={todayVerbs[currentIdx]}
+                  isFlipped={isFlipped}
+                  onFlip={() => setIsFlipped(!isFlipped)}
                 />
               </div>
 
-              {/* 3D Verb Card */}
-              <div className="flex justify-center py-4">
-                <div className="w-full max-w-md">
-                  <VerbCard
-                    word={learnList[currentIdx]}
-                    isFlipped={isFlipped}
-                    onFlip={() => setIsFlipped(!isFlipped)}
-                    onKnow={() => handleMarkVerb('known')}
-                    onLearning={() => handleMarkVerb('learning')}
-                  />
+              {/* Study Controls (Below Card, Matching Image 3 & 4) */}
+              <div className="space-y-4 max-w-md mx-auto w-full">
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => handleReviewVerb('learning')}
+                    className="flex-1 py-3 rounded-xl border border-slate-700 bg-slate-900/40 text-slate-300 hover:border-slate-500 text-xs font-extrabold transition-all"
+                  >
+                    📖 Seekh raha hoon
+                  </button>
+                  <button
+                    onClick={() => handleReviewVerb('known')}
+                    className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 shadow-md"
+                  >
+                    <Check size={14} /> Janta hoon
+                  </button>
+                </div>
+
+                {/* Navigation Row */}
+                <div className="flex justify-between items-center text-slate-400 text-xs px-1">
+                  <button
+                    disabled={currentIdx === 0}
+                    onClick={() => { setIsFlipped(false); setCurrentIdx(p => Math.max(0, p - 1)); }}
+                    className="hover:text-white transition flex items-center gap-1 disabled:opacity-30 disabled:pointer-events-none"
+                  >
+                    ← Pichla Verb
+                  </button>
+
+                  <button
+                    onClick={() => speak(todayVerbs[currentIdx].word)}
+                    className="hover:text-blue-400 transition flex items-center gap-1 text-slate-300 font-bold"
+                  >
+                    <Volume2 size={15} /> Pronounce
+                  </button>
+
+                  <button
+                    disabled={currentIdx >= todayVerbs.length - 1}
+                    onClick={() => { setIsFlipped(false); setCurrentIdx(p => Math.min(todayVerbs.length - 1, p + 1)); }}
+                    className="hover:text-white transition flex items-center gap-1 disabled:opacity-30 disabled:pointer-events-none"
+                  >
+                    Agla Verb →
+                  </button>
                 </div>
               </div>
+            </div>
+          ) : (
+            // All 15 verbs completed for the day
+            <div className="text-center py-12 space-y-6 flex-1 flex flex-col justify-center items-center">
+              <div className="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                <CheckCircle2 size={36} />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-2xl font-black text-slate-100">
+                  Day {selectedDay} ke saare 15 Verbs complete! 🎉
+                </h3>
+                <p className="text-xs text-slate-400 max-w-md mx-auto">
+                  Shabaash! Ab in verbs ko practice karne ke liye AI tutor se chat karein ya Quiz dekar score dekhein.
+                </p>
+              </div>
 
-              {/* Quick Bottom Actions */}
-              <div className="flex justify-center gap-3 max-w-md mx-auto">
+              <div className="flex flex-wrap gap-3 justify-center pt-2">
                 <button
-                  onClick={() => setIsFlipped(!isFlipped)}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs font-bold transition"
+                  onClick={() => { setActiveTab('ai_practice'); initAiPractice(); }}
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold shadow-lg transition flex items-center gap-2"
                 >
-                  <RotateCcw size={14} />
-                  {isFlipped ? 'Show Front' : 'Flip for Tricks'}
+                  <Bot size={16} /> Start AI Practice
                 </button>
                 <button
-                  onClick={() => speak(learnList[currentIdx]?.word || '')}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-blue-400 text-xs font-bold transition"
+                  onClick={startQuiz}
+                  className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold shadow-lg transition flex items-center gap-2"
                 >
-                  <Volume2 size={14} />
-                  Pronounce
+                  <Target size={16} /> Start Verb Quiz
                 </button>
+                {selectedDay < TOTAL_VERB_DAYS && (
+                  <button
+                    onClick={() => setSelectedDay(d => d + 1)}
+                    className="px-5 py-2.5 rounded-xl border border-slate-700 bg-slate-800 text-slate-200 text-xs font-extrabold hover:bg-slate-700 transition"
+                  >
+                    Day {selectedDay + 1} Shuru Karein →
+                  </button>
+                )}
               </div>
             </div>
           )}
-        </motion.div>
+        </div>
       )}
 
-      {/* ─── TAB 2: ALL VERBS (Search & Reference) ─── */}
-      {activeTab === 'all' && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-5">
-          {/* Search bar & filters */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
-            {/* Search Input */}
-            <div className="relative col-span-1 md:col-span-1">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search word, Hindi, V2, V3..."
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-10 pr-3 py-2 text-xs md:text-sm text-slate-200 focus:outline-none focus:border-blue-500 placeholder:text-slate-500"
-              />
+      {/* ─── TAB 2: AI VERB PRACTICE ─── */}
+      {activeTab === 'ai_practice' && (
+        <div className="rounded-2xl border p-6 flex flex-col h-[520px]"
+          style={{ background: '#1E293B', borderColor: '#334155' }}>
+          
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-blue-600 text-white">
+                <Bot size={18} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-100">AI Verb Coach</h3>
+                <p className="text-[10px] text-slate-400">Day {selectedDay} ke verbs par sentences banayein</p>
+              </div>
             </div>
-
-            {/* Category Select */}
-            <div>
-              <select
-                value={refCategory}
-                onChange={(e) => setRefCategory(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs md:text-sm text-slate-200 focus:outline-none focus:border-blue-500"
-              >
-                <option value="all">All Categories ({VERBS.length})</option>
-                <option value="irregular">🔀 Irregular Verbs</option>
-                <option value="business">💼 Business Verbs</option>
-                <option value="freelance">🖥️ Freelance Verbs</option>
-                <option value="interview">🎯 Interview Verbs</option>
-                <option value="regular">📝 Regular Verbs</option>
-              </select>
-            </div>
-
-            {/* Level Select */}
-            <div>
-              <select
-                value={refLevel}
-                onChange={(e) => setRefLevel(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs md:text-sm text-slate-200 focus:outline-none focus:border-blue-500"
-              >
-                <option value="all">All CEFR Levels</option>
-                <option value="A0">A0 — Absolute Beginner</option>
-                <option value="A1">A1 — Beginner</option>
-                <option value="A2">A2 — Elementary</option>
-                <option value="B1">B1 — Intermediate</option>
-                <option value="B2">B2 — Upper Intermediate</option>
-              </select>
-            </div>
+            <button
+              onClick={initAiPractice}
+              className="text-xs text-blue-400 hover:underline flex items-center gap-1"
+            >
+              <RotateCcw size={12} /> Reset Chat
+            </button>
           </div>
 
-          <div className="flex items-center justify-between text-xs text-slate-400 px-1">
-            <span>Showing <strong className="text-slate-200">{filteredRefVerbs.length}</strong> verbs</span>
-            <span>Tap card to see Memory Trick & Example</span>
-          </div>
-
-          {/* Verb Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredRefVerbs.map(verb => (
-              <VerbCard
-                key={verb.word}
-                word={verb}
-                isFlipped={flippedCards[verb.word] || false}
-                onFlip={() => setFlippedCards(p => ({ ...p, [verb.word]: !p[verb.word] }))}
-                onKnow={() => saveProgressState(verb.word, 'known')}
-                onLearning={() => saveProgressState(verb.word, 'learning')}
-              />
+          {/* Messages list */}
+          <div className="flex-1 overflow-y-auto space-y-3 pr-2">
+            {chatMessages.map(msg => (
+              <div
+                key={msg.id}
+                className={cn(
+                  "flex gap-2.5 max-w-[85%]",
+                  msg.sender === 'user' ? "ml-auto flex-row-reverse" : "mr-auto"
+                )}
+              >
+                <div className={cn(
+                  "w-7 h-7 rounded-full flex items-center justify-center text-xs flex-shrink-0",
+                  msg.sender === 'user' ? "bg-purple-600 text-white" : "bg-blue-600 text-white"
+                )}>
+                  {msg.sender === 'user' ? <User size={14} /> : <Bot size={14} />}
+                </div>
+                <div className={cn(
+                  "p-3.5 rounded-2xl text-xs leading-relaxed whitespace-pre-line",
+                  msg.sender === 'user'
+                    ? "bg-blue-600 text-white rounded-tr-none"
+                    : "bg-slate-900 border border-slate-800 text-slate-200 rounded-tl-none"
+                )}>
+                  {msg.text}
+                </div>
+              </div>
             ))}
+            {aiLoading && (
+              <div className="flex gap-2.5 mr-auto max-w-[85%] items-center text-xs text-slate-400 p-2">
+                <span className="animate-spin w-4 h-4 rounded-full border-2 border-t-transparent border-blue-500" />
+                <span>AI sentence evaluate kar raha hai...</span>
+              </div>
+            )}
+            <div ref={chatBottomRef} />
           </div>
-        </motion.div>
+
+          {/* Chat Input */}
+          <div className="pt-3 border-t border-slate-800 flex gap-2">
+            <input
+              type="text"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSendAiMessage(); }}
+              placeholder={`Type a sentence using any Day ${selectedDay} verb...`}
+              className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-xs md:text-sm text-slate-100 focus:outline-none focus:border-blue-500"
+            />
+            <button
+              disabled={!chatInput.trim() || aiLoading}
+              onClick={handleSendAiMessage}
+              className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white transition flex items-center justify-center"
+            >
+              <Send size={16} />
+            </button>
+          </div>
+        </div>
       )}
 
-      {/* ─── TAB 3: PRACTICE QUIZ ─── */}
-      {activeTab === 'practice' && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-2xl mx-auto">
+      {/* ─── TAB 3: QUIZ ─── */}
+      {activeTab === 'quiz' && (
+        <div className="rounded-2xl border p-6 min-h-[460px]"
+          style={{ background: '#1E293B', borderColor: '#334155' }}>
+          
           {!quizFinished && quizQuestions.length > 0 && (
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-6">
+            <div className="max-w-xl mx-auto space-y-6">
               {/* Question progress */}
               <div className="flex items-center justify-between">
                 <span className="text-xs font-black text-blue-400 uppercase tracking-widest">
@@ -558,7 +615,7 @@ export default function VerbsPage() {
               </div>
 
               {/* Prompt Card */}
-              <div className="bg-slate-950/80 p-5 rounded-2xl border border-slate-800/80 space-y-2">
+              <div className="bg-slate-950/90 p-5 rounded-2xl border border-slate-800 space-y-2">
                 <p className="text-sm md:text-base font-bold text-slate-100 whitespace-pre-line leading-relaxed">
                   {quizQuestions[quizIdx].prompt}
                 </p>
@@ -569,7 +626,7 @@ export default function VerbsPage() {
                 )}
               </div>
 
-              {/* Input Area (Type A: Fill in blank, Type B/C: Options) */}
+              {/* Input Area (Fill in blank / Multiple choice) */}
               {quizQuestions[quizIdx].type === 'v2_fill' ? (
                 <div className="space-y-3">
                   <input
@@ -578,7 +635,7 @@ export default function VerbsPage() {
                     value={quizTypedAnswer}
                     onChange={(e) => setQuizTypedAnswer(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter' && !quizAnswered && quizTypedAnswer.trim()) handleQuizSubmit(quizTypedAnswer); }}
-                    placeholder="Type V2 past form here..."
+                    placeholder="Type Past (V2) form here..."
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-base font-bold text-slate-100 focus:outline-none focus:border-blue-500"
                     autoFocus
                   />
@@ -600,11 +657,8 @@ export default function VerbsPage() {
                     
                     let btnStyle = 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-600'
                     if (quizAnswered) {
-                      if (isCorrect) {
-                        btnStyle = 'bg-emerald-500/15 border-emerald-500 text-emerald-300'
-                      } else if (isSelected) {
-                        btnStyle = 'bg-rose-500/15 border-rose-500 text-rose-300'
-                      }
+                      if (isCorrect) btnStyle = 'bg-emerald-500/15 border-emerald-500 text-emerald-300'
+                      else if (isSelected) btnStyle = 'bg-rose-500/15 border-rose-500 text-rose-300'
                     }
 
                     return (
@@ -628,7 +682,7 @@ export default function VerbsPage() {
 
               {/* Explanation & Next */}
               {quizAnswered && (
-                <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 pt-2">
+                <div className="space-y-4 pt-2">
                   <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-1">
                     <p className="font-bold text-amber-400">💡 Explanation:</p>
                     <p className="text-slate-300">{quizQuestions[quizIdx].explanation}</p>
@@ -640,41 +694,37 @@ export default function VerbsPage() {
                   >
                     {quizIdx < quizQuestions.length - 1 ? 'Next Question →' : 'View Final Score 🎉'}
                   </button>
-                </motion.div>
+                </div>
               )}
             </div>
           )}
 
-          {/* Quiz Complete Screen */}
           {quizFinished && (
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center space-y-6 shadow-2xl">
+            <div className="max-w-md mx-auto text-center space-y-6 py-6">
               <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center mx-auto text-white shadow-xl">
                 <Award size={32} />
               </div>
-
-              <div className="space-y-2">
+              <div className="space-y-1">
                 <h2 className="text-2xl font-black text-slate-100">Quiz Completed!</h2>
-                <p className="text-sm text-slate-400">
-                  Aapne <strong className="text-emerald-400">{quizQuestions.length}</strong> mein se <strong className="text-blue-400">{quizScore}</strong> sahi answers diye.
+                <p className="text-xs text-slate-400">
+                  {quizQuestions.length} mein se {quizScore} sahi answers.
                 </p>
               </div>
 
-              {/* Score card */}
               <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 inline-block px-8">
-                <span className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">
+                <span className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">
                   {Math.round((quizScore / quizQuestions.length) * 100)}%
                 </span>
                 <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">Accuracy</p>
               </div>
 
-              {/* Wrong answers review */}
               {wrongAnswers.length > 0 && (
                 <div className="text-left space-y-2 pt-2">
                   <p className="text-xs font-bold text-slate-400">Review mistakes:</p>
-                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
                     {wrongAnswers.map((w, idx) => (
-                      <div key={idx} className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs">
-                        <span className="font-bold text-slate-200">{w.verb.word}</span>: Correct answer was <strong className="text-emerald-400">{w.correctAnswer}</strong>
+                      <div key={idx} className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+                        <span className="font-bold text-slate-200">{w.verb.word}</span>: Correct was <strong className="text-emerald-400">{w.correctAnswer}</strong>
                       </div>
                     ))}
                   </div>
@@ -683,13 +733,13 @@ export default function VerbsPage() {
 
               <div className="flex gap-3">
                 <button
-                  onClick={startPracticeQuiz}
+                  onClick={startQuiz}
                   className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs transition"
                 >
                   Play Again 🔄
                 </button>
                 <button
-                  onClick={() => setActiveTab('learn')}
+                  onClick={() => setActiveTab('today')}
                   className="flex-1 py-3 rounded-xl border border-slate-700 bg-slate-800 text-slate-300 font-extrabold text-xs transition"
                 >
                   Back to Learning
@@ -697,65 +747,89 @@ export default function VerbsPage() {
               </div>
             </div>
           )}
-        </motion.div>
+        </div>
       )}
 
-      {/* ─── TAB 4: PROGRESS STATS ─── */}
-      {activeTab === 'progress' && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-          {/* Metric cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-1">
-              <span className="text-xs font-bold text-slate-400">Total Verbs</span>
-              <p className="text-2xl md:text-3xl font-black text-slate-100">{VERBS.length}</p>
-              <span className="text-[10px] text-slate-500">In curriculum</span>
+      {/* ─── TAB 4: ALL 500 VERBS (Dictionary) ─── */}
+      {activeTab === 'all' && (
+        <div className="space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
+            {/* Search Input */}
+            <div className="relative col-span-1 md:col-span-1">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search word, Hindi, V2, V3..."
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-10 pr-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+              />
             </div>
 
-            <div className="p-5 rounded-2xl bg-slate-900 border border-emerald-500/20 bg-emerald-500/5 space-y-1">
-              <span className="text-xs font-bold text-emerald-400">Mastered ⭐</span>
-              <p className="text-2xl md:text-3xl font-black text-emerald-400">{totalMastered}</p>
-              <span className="text-[10px] text-emerald-500 font-semibold">Janta hoon</span>
+            {/* Category Select */}
+            <div>
+              <select
+                value={refCategory}
+                onChange={(e) => setRefCategory(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+              >
+                <option value="all">All Categories</option>
+                <option value="irregular">🔀 Irregular Verbs</option>
+                <option value="regular">📝 Daily & Regular</option>
+                <option value="business">💼 Business & Office</option>
+                <option value="freelance">🖥️ Freelance & Tech</option>
+                <option value="interview">🎯 Interview & Power</option>
+              </select>
             </div>
 
-            <div className="p-5 rounded-2xl bg-slate-900 border border-blue-500/20 bg-blue-500/5 space-y-1">
-              <span className="text-xs font-bold text-blue-400">Learning 📖</span>
-              <p className="text-2xl md:text-3xl font-black text-blue-400">{totalLearning}</p>
-              <span className="text-[10px] text-blue-500 font-semibold">Seekh raha hoon</span>
+            {/* Level Select */}
+            <div>
+              <select
+                value={refLevel}
+                onChange={(e) => setRefLevel(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+              >
+                <option value="all">All CEFR Levels</option>
+                <option value="A0">A0 — Absolute Beginner</option>
+                <option value="A1">A1 — Beginner</option>
+                <option value="A2">A2 — Elementary</option>
+                <option value="B1">B1 — Intermediate</option>
+                <option value="B2">B2 — Upper Intermediate</option>
+              </select>
             </div>
 
-            <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-1">
-              <span className="text-xs font-bold text-slate-400">Remaining</span>
-              <p className="text-2xl md:text-3xl font-black text-slate-300">{Math.max(0, totalRemaining)}</p>
-              <span className="text-[10px] text-slate-500">Pending review</span>
+            {/* Day Filter */}
+            <div>
+              <select
+                value={refDay}
+                onChange={(e) => setRefDay(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+              >
+                <option value="all">All 34 Days (500 verbs)</option>
+                {Array.from({ length: TOTAL_VERB_DAYS }, (_, i) => i + 1).map(d => (
+                  <option key={d} value={d.toString()}>Day {d}</option>
+                ))}
+              </select>
             </div>
           </div>
 
-          {/* Category breakdown */}
-          <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
-            <h3 className="text-base font-bold text-slate-100">Category Breakdown</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {Object.entries(VERB_CATEGORIES).map(([catKey, catMeta]) => {
-                const count = VERBS.filter(v => v.category === catKey).length
-                const masteredInCat = VERBS.filter(v => v.category === catKey && learnProgress[v.word] === 'known').length
-                const pct = count > 0 ? Math.round((masteredInCat / count) * 100) : 0
-
-                return (
-                  <div key={catKey} className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-200">
-                        {catMeta.emoji} {catMeta.name}
-                      </span>
-                      <span className="text-xs font-black text-blue-400">{masteredInCat}/{count} ({pct}%)</span>
-                    </div>
-                    <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
-                      <div className="h-full bg-blue-500 rounded-full" style={{ width: `${pct}%` }} />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+          <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+            <span>Showing <strong className="text-slate-200">{filteredAllVerbs.length}</strong> verbs</span>
+            <span>Tap card to view V1, V2, V3 and examples</span>
           </div>
-        </motion.div>
+
+          {/* Grid of Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredAllVerbs.map(verb => (
+              <VerbCard
+                key={verb.word}
+                word={verb}
+                isFlipped={flippedCards[verb.word] || false}
+                onFlip={() => setFlippedCards(p => ({ ...p, [verb.word]: !p[verb.word] }))}
+              />
+            ))}
+          </div>
+        </div>
       )}
     </div>
   )
