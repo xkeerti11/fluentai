@@ -1,41 +1,25 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
-  Sparkles, BookOpen, CheckCircle2, HelpCircle, RotateCcw, 
-  Search, Filter, Award, ArrowRight, ArrowLeft, Volume2, VolumeX,
-  Check, X, Zap, Target, Briefcase, Laptop, Users, Bot, Send, User, 
-  ChevronLeft, ChevronRight, Calendar, Mic, MicOff, Square, Sparkle
+  Sparkles, CheckCircle2, RotateCcw, 
+  Search, Award, ArrowRight, ArrowLeft, Volume2,
+  Check, X, Target, Calendar, AlertTriangle, PlayCircle
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/useAuth'
-import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useSpeechSynthesis } from '@/hooks/useSpeechSynthesis'
 import { cn } from '@/lib/utils/cn'
 import VerbCard from '@/components/vocabulary/VerbCard'
-import { ALL_500_VERBS, getVerbsByDay, TOTAL_VERB_DAYS, VERB_CATEGORIES, VerbEntry } from '@/data/verb-curriculum'
+import { ALL_500_VERBS, getVerbsByDay, TOTAL_VERB_DAYS, VerbEntry } from '@/data/verb-curriculum'
 
-type VerbTabType = 'today' | 'ai_practice' | 'quiz' | 'all'
-
-interface ChatMessage {
-  id: string
-  sender: 'ai' | 'user'
-  text: string
-  time: string
-  correction?: {
-    made: boolean
-    wrong_form?: string
-    correct_form?: string
-    verb_form_used?: string
-    hindi_hint?: string
-  }
-}
+type VerbTabType = 'today' | 'quiz' | 'all'
 
 interface QuizQuestion {
   id: number
   verb: VerbEntry
-  type: 'v2_fill' | 'v3_mcq' | 'form_triplet'
+  type: 'v2_fill' | 'v3_mcq'
   prompt: string
   sentenceHindi?: string
   correctAnswer: string
@@ -45,39 +29,22 @@ interface QuizQuestion {
 
 export default function VerbsPage() {
   const { profile } = useAuth()
-  
-  // Speech Hooks (Using new resilient STT & TTS hooks)
-  const { speak, stopSpeaking, speakSlower, isSpeaking } = useSpeechSynthesis()
-  const {
-    transcript,
-    interimTranscript,
-    isListening,
-    isSupported: micSupported,
-    startListening,
-    stopListening,
-    resetTranscript
-  } = useSpeechRecognition()
+  const { speak } = useSpeechSynthesis()
 
   const [activeTab, setActiveTab] = useState<VerbTabType>('today')
   const [selectedDay, setSelectedDay] = useState<number>(1)
+  const [unlockedDay, setUnlockedDay] = useState<number>(1)
   
   // Progress tracking in LocalStorage
   const [verbProgress, setVerbProgress] = useState<{ [word: string]: 'known' | 'learning' }>({})
   
-  // ─── TAB 1: TODAY'S 15 VERBS (Flashcard state) ───
+  // ─── TAB 1: 15 VERBS FLASHCARD STATE ───
   const [currentIdx, setCurrentIdx] = useState(0)
   const [isFlipped, setIsFlipped] = useState(false)
   const [dayReviewed, setDayReviewed] = useState<{ [word: string]: 'known' | 'learning' }>({})
+  const [customReviewVerbs, setCustomReviewVerbs] = useState<VerbEntry[] | null>(null)
 
-  // ─── TAB 2: AI VERB PRACTICE (Voice Coach state) ───
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
-  const [typedInput, setTypedInput] = useState('')
-  const [aiLoading, setAiLoading] = useState(false)
-  const [voiceEnabled, setVoiceEnabled] = useState(true)
-  const [slowMode, setSlowMode] = useState(false)
-  const chatBottomRef = useRef<HTMLDivElement>(null)
-
-  // ─── TAB 3: QUIZ STATE ───
+  // ─── TAB 2: QUIZ STATE ───
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([])
   const [quizIdx, setQuizIdx] = useState(0)
   const [quizTypedAnswer, setQuizTypedAnswer] = useState('')
@@ -85,21 +52,16 @@ export default function VerbsPage() {
   const [quizAnswered, setQuizAnswered] = useState(false)
   const [quizScore, setQuizScore] = useState(0)
   const [quizFinished, setQuizFinished] = useState(false)
-  const [wrongAnswers, setWrongAnswers] = useState<QuizQuestion[]>([])
+  const [wrongAnswers, setWrongAnswers] = useState<{ question: QuizQuestion; userAnswer: string }[]>([])
 
-  // ─── TAB 4: ALL VERBS (Search & filter) ───
+  // ─── TAB 3: ALL VERBS (Search & filter) ───
   const [searchQuery, setSearchQuery] = useState('')
   const [refCategory, setRefCategory] = useState('all')
   const [refLevel, setRefLevel] = useState('all')
   const [refDay, setRefDay] = useState<string>('all')
   const [flippedCards, setFlippedCards] = useState<{ [word: string]: boolean }>({})
 
-  // Helper for current time format (e.g. 09:45 pm)
-  const getCurrentTime = () => {
-    return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toLowerCase()
-  }
-
-  // Load progress from localStorage on mount
+  // Load progress and unlocked day from localStorage on mount
   useEffect(() => {
     try {
       const saved = localStorage.getItem('fluentai_verb_progress')
@@ -109,6 +71,10 @@ export default function VerbsPage() {
       const savedDay = localStorage.getItem('fluentai_verb_active_day')
       if (savedDay) {
         setSelectedDay(parseInt(savedDay, 10) || 1)
+      }
+      const savedUnlocked = localStorage.getItem('fluentai_unlocked_verb_day')
+      if (savedUnlocked) {
+        setUnlockedDay(parseInt(savedUnlocked, 10) || 1)
       }
     } catch (e) {
       console.error('Error loading verb progress', e)
@@ -134,139 +100,27 @@ export default function VerbsPage() {
     }).catch(() => {})
   }
 
-  // Today's 15 verbs for selected day
-  const todayVerbs = useMemo(() => {
+  // Active verbs for learning (either custom missed verbs review or day's 15 verbs)
+  const activeLearningVerbs = useMemo(() => {
+    if (customReviewVerbs && customReviewVerbs.length > 0) {
+      return customReviewVerbs
+    }
     return getVerbsByDay(selectedDay)
-  }, [selectedDay])
+  }, [selectedDay, customReviewVerbs])
 
-  // Reset card index when day changes
+  // Reset card index when day or review list changes
   useEffect(() => {
     setCurrentIdx(0)
     setIsFlipped(false)
     try {
       localStorage.setItem('fluentai_verb_active_day', selectedDay.toString())
     } catch (e) {}
-  }, [selectedDay])
+  }, [selectedDay, customReviewVerbs])
 
-  // Scroll AI chat to bottom
-  useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chatMessages, aiLoading, interimTranscript, transcript])
-
-  // Speech player helper
-  const playAiVoice = (text: string) => {
-    if (!voiceEnabled) return
-    const cleanText = text
-      .replace(/[*#_`~]/g, '')
-      .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
-      .trim()
-    
-    if (slowMode) {
-      speakSlower(cleanText)
-    } else {
-      speak(cleanText)
-    }
-  }
-
-  // Initialize AI Practice message
-  const initAiPractice = () => {
-    const v1 = todayVerbs[0]?.word || 'go'
-    const welcomeText = `Hello ${profile?.name || 'there'}! I'm Aria, your English verb practice coach. Let's practice Day ${selectedDay} verbs together!\n\nCan you make a sentence using "${v1}" in present tense (V1)?`
-    
-    setChatMessages([
-      {
-        id: '1',
-        sender: 'ai',
-        text: welcomeText,
-        time: getCurrentTime()
-      }
-    ])
-
-    setTimeout(() => {
-      playAiVoice(welcomeText)
-    }, 600)
-  }
-
-  // Send message to dedicated /api/verb-chat endpoint
-  const handleSendAiMessage = async (customText?: string) => {
-    const textToSend = (customText || typedInput || transcript).trim()
-    if (!textToSend || aiLoading) return
-
-    if (isListening) {
-      stopListening()
-    }
-    resetTranscript()
-    setTypedInput('')
-
-    const userMsg: ChatMessage = {
-      id: Date.now().toString(),
-      sender: 'user',
-      text: textToSend,
-      time: getCurrentTime()
-    }
-    setChatMessages(prev => [...prev, userMsg])
-    setAiLoading(true)
-
-    try {
-      const res = await fetch('/api/verb-chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [...chatMessages, userMsg],
-          day: selectedDay,
-          verbs: todayVerbs
-        })
-      })
-
-      const json = await res.json()
-      const data = json.data || {}
-      const aiReply = data.reply || "Bahut achha attempt! Next verb se ek sentence banayein."
-
-      const aiMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        sender: 'ai',
-        text: aiReply,
-        time: getCurrentTime(),
-        correction: data.correction?.made ? data.correction : undefined
-      }
-
-      setChatMessages(prev => [...prev, aiMsg])
-      playAiVoice(aiReply)
-    } catch (err) {
-      const fallbackReply = "Good attempt! Let's try making another sentence with today's verbs."
-      setChatMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
-        sender: 'ai',
-        text: fallbackReply,
-        time: getCurrentTime()
-      }])
-      playAiVoice(fallbackReply)
-    } finally {
-      setAiLoading(false)
-    }
-  }
-
-  // Mic click handler (Fix 5 WhatsApp style)
-  const handleMicClick = () => {
-    if (isListening) {
-      stopListening()
-      if (transcript.trim()) {
-        handleSendAiMessage(transcript)
-      }
-    } else {
-      if (isSpeaking) {
-        stopSpeaking()
-      }
-      resetTranscript()
-      setTypedInput('')
-      startListening()
-    }
-  }
-
-  // ─── Quiz Generator ───
-  const startQuiz = () => {
-    const candidates = [...todayVerbs, ...ALL_500_VERBS.filter(v => v.day < selectedDay)].slice(0, 30)
-    const shuffled = [...candidates].sort(() => Math.random() - 0.5).slice(0, 10)
+  // ─── Quiz Generator for Current 15 Verbs ───
+  const startQuizForDay = (dayNum = selectedDay, specificVerbs?: VerbEntry[]) => {
+    const targetVerbs = specificVerbs && specificVerbs.length > 0 ? specificVerbs : getVerbsByDay(dayNum)
+    const shuffled = [...targetVerbs].sort(() => Math.random() - 0.5)
 
     const questions: QuizQuestion[] = shuffled.map((verb, i) => {
       const qType = i % 2 === 0 ? 'v2_fill' : 'v3_mcq'
@@ -288,7 +142,7 @@ export default function VerbsPage() {
           verb.word + 'ed',
           verb.word + 'ing',
           verb.v1.split('/')[0].trim()
-        ].filter(opt => opt !== cleanV3)
+        ].filter(opt => opt.toLowerCase() !== cleanV3.toLowerCase())
 
         const options = Array.from(new Set([cleanV3, ...distractors])).slice(0, 4).sort(() => Math.random() - 0.5)
 
@@ -322,14 +176,17 @@ export default function VerbsPage() {
 
     const currentQ = quizQuestions[quizIdx]
     let isCorrect = false
+    let givenAnswer = answer
 
     if (currentQ.type === 'v2_fill') {
-      const cleanTyped = quizTypedAnswer.trim().toLowerCase()
+      givenAnswer = quizTypedAnswer.trim()
+      const cleanTyped = givenAnswer.toLowerCase()
       const cleanExpected = currentQ.correctAnswer.toLowerCase()
       isCorrect = cleanTyped === cleanExpected
     } else {
       setQuizSelectedOption(answer)
-      isCorrect = answer.trim() === currentQ.correctAnswer.trim()
+      givenAnswer = answer.trim()
+      isCorrect = givenAnswer === currentQ.correctAnswer.trim()
     }
 
     if (isCorrect) {
@@ -337,8 +194,8 @@ export default function VerbsPage() {
       toast.success('Shabaash! Sahi Jawab 🎉')
       saveProgressState(currentQ.verb.word, 'known')
     } else {
-      setWrongAnswers(prev => [...prev, currentQ])
-      toast.error('Galat jawab. Explanation check karein.')
+      setWrongAnswers(prev => [...prev, { question: currentQ, userAnswer: givenAnswer }])
+      toast.error(`Galat jawab! Sahi form "${currentQ.correctAnswer}" hai.`)
       saveProgressState(currentQ.verb.word, 'learning')
     }
   }
@@ -351,25 +208,61 @@ export default function VerbsPage() {
       setQuizIdx(prev => prev + 1)
     } else {
       setQuizFinished(true)
+      
+      // Calculate if passed (80% or more)
+      const finalScore = quizScore + (quizAnswered && quizSelectedOption === quizQuestions[quizIdx]?.correctAnswer ? 0 : 0)
+      const passed = finalScore >= Math.ceil(quizQuestions.length * 0.8)
+      if (passed && selectedDay >= unlockedDay && selectedDay < TOTAL_VERB_DAYS) {
+        const nextDay = selectedDay + 1
+        setUnlockedDay(nextDay)
+        try {
+          localStorage.setItem('fluentai_unlocked_verb_day', nextDay.toString())
+        } catch (e) {}
+      }
     }
   }
 
   // Handle Flashcard Study Action
   const handleReviewVerb = (status: 'known' | 'learning') => {
-    if (!todayVerbs[currentIdx]) return
-    const cur = todayVerbs[currentIdx]
+    if (!activeLearningVerbs[currentIdx]) return
+    const cur = activeLearningVerbs[currentIdx]
     saveProgressState(cur.word, status)
     toast.success(status === 'known' ? 'Marked as Mastered! ⭐' : 'Saved for practice! 📖')
 
     setTimeout(() => {
       setIsFlipped(false)
-      if (currentIdx < todayVerbs.length - 1) {
+      if (currentIdx < activeLearningVerbs.length - 1) {
         setCurrentIdx(prev => prev + 1)
       }
     }, 250)
   }
 
-  // Filtered reference verbs for Tab 4
+  // Handle Re-practice of Missed Verbs
+  const handleRepracticeMissedVerbs = () => {
+    const missed = wrongAnswers.map(w => w.question.verb)
+    if (missed.length > 0) {
+      setCustomReviewVerbs(missed)
+    } else {
+      setCustomReviewVerbs(null)
+    }
+    setCurrentIdx(0)
+    setIsFlipped(false)
+    setActiveTab('today')
+    toast.info('In verbs ko achhi tarah yaad karein, fir dubara quiz dein! 🎯')
+  }
+
+  // Advance to Next 15 Verbs (Day X + 1)
+  const handleAdvanceToNextDay = () => {
+    const next = Math.min(TOTAL_VERB_DAYS, selectedDay + 1)
+    setSelectedDay(next)
+    setCustomReviewVerbs(null)
+    setCurrentIdx(0)
+    setIsFlipped(false)
+    setActiveTab('today')
+    toast.success(`Day ${next} ke 15 Verbs shuru ho gaye! 🎉`)
+  }
+
+  // Filtered reference verbs for Tab 3 (Sabhi 500 Verbs)
   const filteredAllVerbs = useMemo(() => {
     return ALL_500_VERBS.filter(v => {
       const matchSearch = v.word.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -386,6 +279,7 @@ export default function VerbsPage() {
   }, [searchQuery, refCategory, refLevel, refDay])
 
   const totalMastered = Object.values(verbProgress).filter(s => s === 'known').length
+  const isQuizPassed = quizFinished && (quizScore >= Math.ceil(quizQuestions.length * 0.8))
 
   return (
     <div className="space-y-4 sm:space-y-6 max-w-5xl mx-auto px-2.5 sm:px-4 md:px-6 pb-28 pt-2">
@@ -400,7 +294,7 @@ export default function VerbsPage() {
               Verb Mastery 🔤
             </h1>
             <p className="text-[11px] sm:text-xs md:text-sm text-slate-400 font-medium">
-              Roz 15 Verbs • 500+ Curated Verbs (V1-V2-V3) • AI Voice Coach & Quizzes
+              15 Verbs Yaad Karo $\rightarrow$ Quiz Pass Karo $\rightarrow$ Agle 15 Verbs Unlock Karo!
             </p>
           </div>
         </div>
@@ -413,12 +307,16 @@ export default function VerbsPage() {
             <span className="text-[11px] sm:text-xs">Day:</span>
             <select
               value={selectedDay}
-              onChange={(e) => setSelectedDay(parseInt(e.target.value, 10))}
+              onChange={(e) => {
+                const d = parseInt(e.target.value, 10)
+                setSelectedDay(d)
+                setCustomReviewVerbs(null)
+              }}
               className="bg-slate-900 text-blue-400 font-black rounded-lg px-1.5 py-0.5 border border-slate-700 focus:outline-none text-[11px] sm:text-xs"
             >
               {Array.from({ length: TOTAL_VERB_DAYS }, (_, i) => i + 1).map(d => (
                 <option key={d} value={d}>
-                  Day {d} ({15} verbs)
+                  Day {d} {d <= unlockedDay ? '🔓' : '🔒'} (15 verbs)
                 </option>
               ))}
             </select>
@@ -431,24 +329,26 @@ export default function VerbsPage() {
         </div>
       </div>
 
-      {/* Tabs with smooth horizontal scroll on mobile */}
+      {/* Clean 3 Tabs (AI Coach removed) */}
       <div className="w-full overflow-x-auto no-scrollbar py-0.5">
         <div className="flex gap-1.5 sm:gap-2 p-1 rounded-2xl bg-slate-900/90 border border-slate-800 w-max min-w-full sm:min-w-0">
           {[
-            { id: 'today', label: `📅 Aaj ke 15 Verbs (Day ${selectedDay})`, count: todayVerbs.length - Object.keys(dayReviewed).length },
-            { id: 'ai_practice', label: '🤖 AI Voice Coach' },
-            { id: 'quiz', label: '❓ Verb Quiz' },
+            { 
+              id: 'today', 
+              label: customReviewVerbs 
+                ? `🔄 Missed Verbs Practice (${customReviewVerbs.length})` 
+                : `📅 Aaj ke 15 Verbs (Day ${selectedDay})`, 
+              count: activeLearningVerbs.length - Object.keys(dayReviewed).length 
+            },
+            { id: 'quiz', label: `❓ Verb Quiz (Day ${selectedDay})` },
             { id: 'all', label: '📚 Sabhi 500 Verbs', count: ALL_500_VERBS.length }
           ].map(t => (
             <button
               key={t.id}
               onClick={() => {
                 setActiveTab(t.id as VerbTabType)
-                if (t.id === 'ai_practice' && chatMessages.length === 0) {
-                  initAiPractice()
-                }
                 if (t.id === 'quiz' && quizQuestions.length === 0) {
-                  startQuiz()
+                  startQuizForDay(selectedDay, customReviewVerbs || undefined)
                 }
               }}
               className={cn(
@@ -472,29 +372,45 @@ export default function VerbsPage() {
         </div>
       </div>
 
-      {/* ─── TAB 1: TODAY'S 15 VERBS (1-by-1 Flashcard UI) ─── */}
+      {/* ─── TAB 1: 15 VERBS (1-by-1 Interactive Flashcards) ─── */}
       {activeTab === 'today' && (
         <div className="rounded-2xl border p-4 sm:p-6 min-h-[440px] sm:min-h-[480px] flex flex-col justify-between"
           style={{ background: '#1E293B', borderColor: '#334155' }}>
           
-          {todayVerbs.length === 0 ? (
+          {/* Custom Missed Verbs Alert Banner */}
+          {customReviewVerbs && (
+            <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs text-amber-300 font-bold">
+                <AlertTriangle size={16} className="text-amber-400 flex-shrink-0" />
+                <span>Quiz mein jo verbs galat huye the, unhe pehle yahan dhyan se yaad karein!</span>
+              </div>
+              <button
+                onClick={() => setCustomReviewVerbs(null)}
+                className="text-[11px] text-slate-400 hover:text-white underline font-semibold"
+              >
+                Reset to Day {selectedDay}
+              </button>
+            </div>
+          )}
+
+          {activeLearningVerbs.length === 0 ? (
             <div className="text-center py-20 text-slate-400">Loading Day {selectedDay} verbs...</div>
-          ) : currentIdx < todayVerbs.length ? (
+          ) : currentIdx < activeLearningVerbs.length ? (
             <div className="space-y-4 sm:space-y-6 flex-1 flex flex-col justify-between">
               {/* Header inside card container */}
               <div>
                 <span className="text-[9px] sm:text-[10px] font-black text-blue-400 uppercase tracking-widest">
-                  TODAY'S VERB {currentIdx + 1} OF {todayVerbs.length} (DAY {selectedDay})
+                  {customReviewVerbs ? 'MISSED VERB' : `DAY ${selectedDay} VERB`} {currentIdx + 1} OF {activeLearningVerbs.length}
                 </span>
                 <h3 className="text-xs sm:text-sm font-bold text-slate-400 mt-0.5">
-                  Naya verb seekhein aur click karke check karein
+                  Card par click karke V1, V2, V3 aur Hindi sentence dekhein
                 </h3>
               </div>
 
               {/* Centered Flip Card */}
               <div className="flex justify-center py-2 sm:py-4">
                 <VerbCard
-                  word={todayVerbs[currentIdx]}
+                  word={activeLearningVerbs[currentIdx]}
                   isFlipped={isFlipped}
                   onFlip={() => setIsFlipped(!isFlipped)}
                 />
@@ -528,15 +444,15 @@ export default function VerbsPage() {
                   </button>
 
                   <button
-                    onClick={() => speak(todayVerbs[currentIdx].word)}
+                    onClick={() => speak(activeLearningVerbs[currentIdx].word)}
                     className="hover:text-blue-400 transition flex items-center gap-1 text-slate-300 font-bold p-1"
                   >
                     <Volume2 size={15} /> Pronounce
                   </button>
 
                   <button
-                    disabled={currentIdx >= todayVerbs.length - 1}
-                    onClick={() => { setIsFlipped(false); setCurrentIdx(p => Math.min(todayVerbs.length - 1, p + 1)); }}
+                    disabled={currentIdx >= activeLearningVerbs.length - 1}
+                    onClick={() => { setIsFlipped(false); setCurrentIdx(p => Math.min(activeLearningVerbs.length - 1, p + 1)); }}
                     className="hover:text-white transition flex items-center gap-1 disabled:opacity-30 disabled:pointer-events-none p-1"
                   >
                     Agla →
@@ -545,279 +461,40 @@ export default function VerbsPage() {
               </div>
             </div>
           ) : (
-            // All 15 verbs completed for the day
+            // All 15 verbs reviewed in flashcards
             <div className="text-center py-10 sm:py-12 space-y-5 sm:space-y-6 flex-1 flex flex-col justify-center items-center">
               <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
                 <CheckCircle2 size={32} className="sm:w-9 sm:h-9" />
               </div>
               <div className="space-y-1.5">
                 <h3 className="text-xl sm:text-2xl font-black text-slate-100">
-                  Day {selectedDay} ke saare 15 Verbs complete! 🎉
+                  {customReviewVerbs ? 'Missed Verbs Review Complete!' : `Day ${selectedDay} ke saare 15 Verbs yaad ho gaye! 🎉`}
                 </h3>
                 <p className="text-xs text-slate-400 max-w-md mx-auto px-2">
-                  Shabaash! Ab in verbs ko bolkar practice karne ke liye AI Voice Coach se baat karein ya Quiz dein.
+                  Ab Quiz dekar test karein. Agar aapka score sahi raha to agle 15 verbs unlock ho jayenge!
                 </p>
               </div>
 
               <div className="flex flex-wrap gap-2.5 sm:gap-3 justify-center pt-2">
                 <button
-                  onClick={() => { setActiveTab('ai_practice'); initAiPractice(); }}
-                  className="px-4 sm:px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold shadow-lg transition flex items-center gap-2"
+                  onClick={() => startQuizForDay(selectedDay, customReviewVerbs || undefined)}
+                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-sm font-extrabold shadow-lg transition flex items-center gap-2 active:scale-95"
                 >
-                  <Bot size={15} /> Start AI Voice Coach
+                  <Target size={16} /> Abhi Verb Quiz Shuru Karein →
                 </button>
                 <button
-                  onClick={startQuiz}
-                  className="px-4 sm:px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold shadow-lg transition flex items-center gap-2"
+                  onClick={() => { setCurrentIdx(0); setIsFlipped(false); }}
+                  className="px-5 py-3 rounded-xl border border-slate-700 bg-slate-800 text-slate-300 text-xs font-extrabold hover:bg-slate-700 transition"
                 >
-                  <Target size={15} /> Start Verb Quiz
+                  Ek baar fir Flashcards dekhein 🔄
                 </button>
-                {selectedDay < TOTAL_VERB_DAYS && (
-                  <button
-                    onClick={() => setSelectedDay(d => d + 1)}
-                    className="px-4 sm:px-5 py-2.5 rounded-xl border border-slate-700 bg-slate-800 text-slate-200 text-xs font-extrabold hover:bg-slate-700 transition"
-                  >
-                    Day {selectedDay + 1} Shuru Karein →
-                  </button>
-                )}
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* ─── TAB 2: AI VOICE COACH (Fix 3 & Fix 5 WhatsApp-style Voice Assistant) ─── */}
-      {activeTab === 'ai_practice' && (
-        <div className="rounded-2xl border flex flex-col h-[calc(100vh-280px)] min-h-[480px] max-h-[620px] overflow-hidden"
-          style={{ background: '#1E293B', borderColor: '#334155' }}>
-          
-          {/* Coach Header with Speed & Audio Controls */}
-          <div className="flex items-center justify-between px-3.5 sm:px-5 py-3 border-b border-slate-800/90 bg-slate-900/60">
-            <div className="flex items-center gap-2 sm:gap-2.5">
-              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-black text-xs shadow-md flex-shrink-0">
-                A
-              </div>
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs sm:text-sm font-black text-slate-100">Aria Verb Coach</span>
-                  <Sparkle size={11} className="text-blue-400 fill-blue-400" />
-                </div>
-                <p className="text-[9px] sm:text-[10px] text-slate-400 font-medium">Day {selectedDay} Verbs Voice Practice</p>
-              </div>
-            </div>
-
-            {/* Audio controls */}
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              <button
-                type="button"
-                onClick={() => setSlowMode(!slowMode)}
-                className={cn(
-                  "px-2 py-1 rounded-lg text-[10px] sm:text-xs font-extrabold border transition",
-                  slowMode
-                    ? "bg-purple-600/20 text-purple-300 border-purple-500/40"
-                    : "bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200"
-                )}
-                title="Toggle Speech Speed"
-              >
-                {slowMode ? '0.65x' : '0.85x'}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (voiceEnabled) stopSpeaking()
-                  setVoiceEnabled(!voiceEnabled)
-                }}
-                className={cn(
-                  "p-1.5 rounded-lg border transition",
-                  voiceEnabled
-                    ? "bg-blue-600/20 text-blue-400 border-blue-500/30"
-                    : "bg-slate-800 text-slate-500 border-slate-700"
-                )}
-                title={voiceEnabled ? 'Mute AI Voice' : 'Unmute AI Voice'}
-              >
-                {voiceEnabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
-              </button>
-
-              <button
-                type="button"
-                onClick={initAiPractice}
-                className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700 transition"
-                title="Reset Conversation"
-              >
-                <RotateCcw size={14} />
-              </button>
-            </div>
-          </div>
-
-          {/* Quick Verb Suggestion Chips */}
-          <div className="px-3 sm:px-4 py-2 bg-slate-950/40 border-b border-slate-800/60 overflow-x-auto flex items-center gap-1.5 sm:gap-2 no-scrollbar">
-            <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 flex-shrink-0">💡 Quick:</span>
-            {[
-              `Practice "${todayVerbs[0]?.word || 'go'}" in Present (V1)`,
-              `Use "${todayVerbs[1]?.word || 'eat'}" in Past (V2)`,
-              `Use "${todayVerbs[2]?.word || 'have'}" with have/has (V3)`,
-              `Ask me a question using Day ${selectedDay} verbs`
-            ].map((chip, idx) => (
-              <button
-                key={idx}
-                onClick={() => handleSendAiMessage(chip)}
-                className="px-2.5 sm:px-3 py-1 rounded-full bg-slate-800/80 hover:bg-blue-600 hover:text-white text-[10px] sm:text-[11px] font-semibold text-slate-300 border border-slate-700 hover:border-blue-500 transition flex-shrink-0 whitespace-nowrap"
-              >
-                {chip}
-              </button>
-            ))}
-          </div>
-
-          {/* Chat Messages Area */}
-          <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-5 space-y-3 sm:space-y-4">
-            {chatMessages.map(msg => (
-              <div
-                key={msg.id}
-                className={cn(
-                  "flex gap-2 sm:gap-3 max-w-[92%] sm:max-w-[85%]",
-                  msg.sender === 'user' ? "ml-auto flex-row-reverse" : "mr-auto"
-                )}
-              >
-                {/* Avatar */}
-                <div className={cn(
-                  "w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold flex-shrink-0 mt-0.5",
-                  msg.sender === 'user' ? "bg-purple-600 text-white" : "bg-blue-600 text-white"
-                )}>
-                  {msg.sender === 'user' ? 'U' : 'A'}
-                </div>
-
-                <div className="space-y-1.5 max-w-full">
-                  <div className={cn(
-                    "p-3 sm:p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed whitespace-pre-line shadow-md break-words",
-                    msg.sender === 'user'
-                      ? "bg-blue-600 text-white rounded-tr-none font-medium"
-                      : "bg-slate-900 border border-slate-800 text-slate-200 rounded-tl-none font-normal"
-                  )}>
-                    {msg.text}
-                  </div>
-
-                  {/* Correction card if made */}
-                  {msg.correction && (
-                    <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs space-y-1">
-                      <div className="flex items-center gap-1.5 text-amber-400 font-bold">
-                        <span>💡 Quick Tip:</span>
-                        {msg.correction.verb_form_used && (
-                          <span className="text-[10px] bg-amber-500/20 px-1.5 py-0.2 rounded">
-                            {msg.correction.verb_form_used}
-                          </span>
-                        )}
-                      </div>
-                      {msg.correction.wrong_form && msg.correction.correct_form && (
-                        <p className="text-slate-300">
-                          Say: <strong className="text-emerald-400">{msg.correction.correct_form}</strong> (instead of &quot;{msg.correction.wrong_form}&quot;)
-                        </p>
-                      )}
-                      {msg.correction.hindi_hint && (
-                        <p className="text-[11px] text-slate-400">{msg.correction.hindi_hint}</p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Message Bottom */}
-                  <div className={cn(
-                    "flex items-center gap-1.5 text-[9px] sm:text-[10px] text-slate-500 px-1",
-                    msg.sender === 'user' ? "justify-end" : "justify-start"
-                  )}>
-                    <span>{msg.time}</span>
-                    {msg.sender === 'ai' && (
-                      <button
-                        onClick={() => playAiVoice(msg.text)}
-                        className="hover:text-blue-400 text-slate-400 transition p-0.5"
-                        title="Replay Voice"
-                      >
-                        <Volume2 size={12} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {aiLoading && (
-              <div className="flex gap-2 sm:gap-3 mr-auto max-w-[90%] items-center text-xs text-slate-400 p-1">
-                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] sm:text-xs font-bold">
-                  A
-                </div>
-                <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 p-2.5 sm:p-3 rounded-2xl text-[11px] sm:text-xs">
-                  <span className="animate-spin w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full border-2 border-t-transparent border-blue-500" />
-                  <span>Aria is listening...</span>
-                </div>
-              </div>
-            )}
-            <div ref={chatBottomRef} />
-          </div>
-
-          {/* FIX 5: WhatsApp-style Voice Input Bar with Safe-area padding */}
-          <div 
-            className="flex-shrink-0 flex items-center gap-2 px-3 py-2 border-t border-slate-800 bg-slate-900"
-            style={{ paddingBottom: 'max(8px, env(safe-area-inset-bottom))' }}
-          >
-            {/* Mic button */}
-            <button
-              type="button"
-              onClick={handleMicClick}
-              className={cn(
-                "flex-shrink-0 w-11 h-11 rounded-full flex items-center justify-center transition-all active:scale-90 relative",
-                isListening 
-                  ? "bg-red-500 shadow-[0_0_20px_rgba(239,68,68,0.6)]" 
-                  : "bg-blue-600 hover:bg-blue-500 text-white"
-              )}
-              title={isListening ? "Stop Listening" : "Speak with Voice"}
-            >
-              {isListening && (
-                <span className="absolute inset-0 rounded-full bg-red-400 opacity-40 animate-ping" />
-              )}
-              <Mic className="w-5 h-5 text-white relative z-10" />
-            </button>
-
-            {/* Text input - also allow typing & live interim */}
-            <div className="flex-1 bg-slate-800 rounded-full px-4 py-2.5 flex items-center min-h-[44px] relative">
-              {isListening ? (
-                <span className="text-xs sm:text-sm truncate">
-                  {transcript && <span className="text-white font-medium">{transcript} </span>}
-                  {interimTranscript && (
-                    <span className="text-slate-400 italic text-xs">
-                      {interimTranscript}
-                    </span>
-                  )}
-                  {!transcript && !interimTranscript && (
-                    <span className="text-red-400 animate-pulse text-xs font-semibold">
-                      ● Sun raha hoon...
-                    </span>
-                  )}
-                </span>
-              ) : (
-                <input
-                  type="text"
-                  value={typedInput}
-                  onChange={(e) => setTypedInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSendAiMessage()}
-                  placeholder="Bolne ke liye mic dabao ya type karo..."
-                  className="w-full bg-transparent text-slate-200 text-xs sm:text-sm outline-none placeholder-slate-500"
-                />
-              )}
-            </div>
-
-            {/* Send button (shows when there's typed text or finished speech) */}
-            {(typedInput.trim() || (isListening && transcript.trim())) && (
-              <button
-                onClick={() => handleSendAiMessage()}
-                className="flex-shrink-0 w-10 h-10 bg-blue-600 hover:bg-blue-500 rounded-full flex items-center justify-center transition active:scale-90"
-              >
-                <Send className="w-4 h-4 text-white" />
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ─── TAB 3: QUIZ ─── */}
+      {/* ─── TAB 2: VERB QUIZ & MASTERY PROGRESSION ─── */}
       {activeTab === 'quiz' && (
         <div className="rounded-2xl border p-4 sm:p-6 min-h-[440px]"
           style={{ background: '#1E293B', borderColor: '#334155' }}>
@@ -827,10 +504,10 @@ export default function VerbsPage() {
               {/* Question progress */}
               <div className="flex items-center justify-between">
                 <span className="text-[10px] sm:text-xs font-black text-blue-400 uppercase tracking-widest">
-                  Question {quizIdx + 1} of {quizQuestions.length}
+                  Question {quizIdx + 1} of {quizQuestions.length} (Day {selectedDay})
                 </span>
                 <span className="text-[10px] sm:text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border border-emerald-500/20">
-                  Score: {quizScore}
+                  Score: {quizScore} / {quizQuestions.length}
                 </span>
               </div>
 
@@ -908,7 +585,7 @@ export default function VerbsPage() {
                 </div>
               )}
 
-              {/* Explanation & Next */}
+              {/* Explanation & Next Button */}
               {quizAnswered && (
                 <div className="space-y-3 sm:space-y-4 pt-1 sm:pt-2">
                   <div className="p-3 sm:p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-1">
@@ -927,58 +604,110 @@ export default function VerbsPage() {
             </div>
           )}
 
+          {/* QUIZ FINISHED RESULTS SCREEN */}
           {quizFinished && (
             <div className="max-w-md mx-auto text-center space-y-5 sm:space-y-6 py-4 sm:py-6">
-              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center mx-auto text-white shadow-xl">
-                <Award size={28} className="sm:w-8 sm:h-8" />
+              <div className={cn(
+                "w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center mx-auto text-white shadow-xl",
+                isQuizPassed ? "bg-gradient-to-tr from-emerald-600 to-blue-600" : "bg-gradient-to-tr from-amber-600 to-rose-600"
+              )}>
+                {isQuizPassed ? <Award size={36} /> : <AlertTriangle size={36} />}
               </div>
-              <div className="space-y-1">
-                <h2 className="text-xl sm:text-2xl font-black text-slate-100">Quiz Completed!</h2>
+
+              <div className="space-y-1.5">
+                <h2 className="text-xl sm:text-2xl font-black text-slate-100">
+                  {isQuizPassed ? '🎉 Shabaash! Day Complete!' : '⚠️ Practice Needed!'}
+                </h2>
                 <p className="text-xs text-slate-400">
-                  {quizQuestions.length} mein se {quizScore} sahi answers.
+                  {isQuizPassed 
+                    ? `Aapne ${quizQuestions.length} mein se ${quizScore} sahi answers diye!` 
+                    : `Aapne ${wrongAnswers.length} verbs mein galti ki. Inhe dobara practice karein!`
+                  }
                 </p>
               </div>
 
+              {/* Accuracy Badge */}
               <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-950 border border-slate-800 inline-block px-6 sm:px-8">
-                <span className="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">
+                <span className={cn(
+                  "text-2xl sm:text-3xl font-black text-transparent bg-clip-text",
+                  isQuizPassed 
+                    ? "bg-gradient-to-r from-emerald-400 to-blue-400" 
+                    : "bg-gradient-to-r from-amber-400 to-rose-400"
+                )}>
                   {Math.round((quizScore / quizQuestions.length) * 100)}%
                 </span>
                 <p className="text-[9px] sm:text-[10px] text-slate-500 font-bold uppercase mt-1">Accuracy</p>
               </div>
 
+              {/* Missed Verbs List if any */}
               {wrongAnswers.length > 0 && (
                 <div className="text-left space-y-2 pt-1 sm:pt-2">
-                  <p className="text-xs font-bold text-slate-400">Review mistakes:</p>
-                  <div className="space-y-2 max-h-36 sm:max-h-40 overflow-y-auto pr-1">
+                  <div className="flex items-center justify-between text-xs font-bold text-amber-400">
+                    <span>⚠️ Jo verbs aap bhool gaye:</span>
+                    <span className="text-[11px] text-slate-400">{wrongAnswers.length} verbs</span>
+                  </div>
+                  <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
                     {wrongAnswers.map((w, idx) => (
-                      <div key={idx} className="p-2 sm:p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] sm:text-xs">
-                        <span className="font-bold text-slate-200">{w.verb.word}</span>: Correct was <strong className="text-emerald-400">{w.correctAnswer}</strong>
+                      <div key={idx} className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] sm:text-xs space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold text-slate-100">{w.question.verb.word} ({w.question.verb.meaning_hindi})</span>
+                          <span className="text-emerald-400 font-bold text-[10px]">Sahi: {w.question.correctAnswer}</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          Forms: V1: {w.question.verb.v1} | V2: {w.question.verb.v2} | V3: {w.question.verb.v3}
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              <div className="flex gap-2.5 sm:gap-3">
-                <button
-                  onClick={startQuiz}
-                  className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs transition active:scale-[0.98]"
-                >
-                  Play Again 🔄
-                </button>
-                <button
-                  onClick={() => setActiveTab('today')}
-                  className="flex-1 py-3 rounded-xl border border-slate-700 bg-slate-800 text-slate-300 font-extrabold text-xs transition active:scale-[0.98]"
-                >
-                  Back to Learning
-                </button>
+              {/* Action Buttons for Progression */}
+              <div className="space-y-2.5 pt-2">
+                {/* If Passed: Button to Advance to Next 15 Verbs */}
+                {isQuizPassed && selectedDay < TOTAL_VERB_DAYS && (
+                  <button
+                    onClick={handleAdvanceToNextDay}
+                    className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 text-white font-extrabold text-sm shadow-xl transition flex items-center justify-center gap-2 active:scale-[0.98]"
+                  >
+                    <span>🎉 Agle 15 Verbs (Day {selectedDay + 1}) Shuru Karein</span>
+                    <ArrowRight size={16} />
+                  </button>
+                )}
+
+                {/* If Missed Any: Button to Re-practice Missed Verbs */}
+                {wrongAnswers.length > 0 && (
+                  <button
+                    onClick={handleRepracticeMissedVerbs}
+                    className="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-600 to-rose-600 hover:from-amber-500 hover:to-rose-500 text-white font-extrabold text-sm shadow-xl transition flex items-center justify-center gap-2 active:scale-[0.98]"
+                  >
+                    <RotateCcw size={16} />
+                    <span>🔄 In Verbs Ko Dobara Yaad & Practice Karein</span>
+                  </button>
+                )}
+
+                {/* Retake Quiz Option */}
+                <div className="flex gap-2.5 pt-1">
+                  <button
+                    onClick={() => startQuizForDay(selectedDay, customReviewVerbs || undefined)}
+                    className="flex-1 py-2.5 rounded-xl border border-slate-700 bg-slate-800 text-slate-300 font-extrabold text-xs hover:bg-slate-700 transition active:scale-[0.98]"
+                  >
+                    Dubara Quiz Dein 🔄
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('today')}
+                    className="flex-1 py-2.5 rounded-xl border border-slate-700 bg-slate-800 text-slate-300 font-extrabold text-xs hover:bg-slate-700 transition active:scale-[0.98]"
+                  >
+                    Flashcards Dekhein 📖
+                  </button>
+                </div>
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* ─── TAB 4: ALL 500 VERBS (Dictionary) ─── */}
+      {/* ─── TAB 3: ALL 500 VERBS (Dictionary) ─── */}
       {activeTab === 'all' && (
         <div className="space-y-4 sm:space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3 bg-slate-900/60 p-3 sm:p-4 rounded-2xl border border-slate-800">
