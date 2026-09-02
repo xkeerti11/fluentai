@@ -399,35 +399,33 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
   const totalMastered = Object.values(verbProgress).filter(s => s === 'known').length
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto p-3 md:p-6 pb-24">
+    <div className="space-y-4 sm:space-y-6 max-w-5xl mx-auto px-2.5 sm:px-4 md:px-6 pb-28 pt-2">
       {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <span className="p-2 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg">
-              <Sparkles size={24} />
-            </span>
-            <div>
-              <h1 className="text-2xl md:text-3xl font-black text-slate-100 tracking-tight">
-                Verb Mastery 🔤
-              </h1>
-              <p className="text-xs md:text-sm text-slate-400 font-medium">
-                Roz 15 Verbs • 500+ Curated Verbs (V1-V2-V3) • AI Voice Coach & Quizzes
-              </p>
-            </div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 border-b border-slate-800/90 pb-4 sm:pb-5">
+        <div className="flex items-center gap-2.5">
+          <span className="p-2 sm:p-2.5 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg flex-shrink-0">
+            <Sparkles size={22} className="sm:w-6 sm:h-6" />
+          </span>
+          <div>
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-100 tracking-tight">
+              Verb Mastery 🔤
+            </h1>
+            <p className="text-[11px] sm:text-xs md:text-sm text-slate-400 font-medium">
+              Roz 15 Verbs • 500+ Curated Verbs (V1-V2-V3) • AI Voice Coach & Quizzes
+            </p>
           </div>
         </div>
 
         {/* Day Selector & Mastered Badge */}
-        <div className="flex items-center gap-2.5 flex-wrap">
+        <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
           {/* Day Selector */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-800 text-xs font-semibold text-slate-300">
-            <Calendar size={14} className="text-blue-400" />
-            <span>Day:</span>
+          <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-800 text-xs font-semibold text-slate-300">
+            <Calendar size={13} className="text-blue-400 flex-shrink-0" />
+            <span className="text-[11px] sm:text-xs">Day:</span>
             <select
               value={selectedDay}
               onChange={(e) => setSelectedDay(parseInt(e.target.value, 10))}
-              className="bg-slate-900 text-blue-400 font-extrabold rounded-lg px-2 py-0.5 border border-slate-700 focus:outline-none"
+              className="bg-slate-900 text-blue-400 font-black rounded-lg px-1.5 py-0.5 border border-slate-700 focus:outline-none text-[11px] sm:text-xs"
             >
               {Array.from({ length: TOTAL_VERB_DAYS }, (_, i) => i + 1).map(d => (
                 <option key={d} value={d}>
@@ -438,72 +436,74 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
           </div>
 
           {/* Mastered Badge */}
-          <div className="px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-800 text-xs font-semibold text-slate-300">
+          <div className="px-2.5 sm:px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-800 text-[11px] sm:text-xs font-semibold text-slate-300">
             Mastered: <span className="font-extrabold text-emerald-400">{totalMastered} verbs</span>
           </div>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex flex-wrap gap-2 p-1.5 rounded-2xl bg-slate-900/90 border border-slate-800 w-fit">
-        {[
-          { id: 'today', label: `📅 Aaj ke 15 Verbs (Day ${selectedDay})`, count: todayVerbs.length - Object.keys(dayReviewed).length },
-          { id: 'ai_practice', label: '🤖 AI Voice Coach' },
-          { id: 'quiz', label: '❓ Verb Quiz' },
-          { id: 'all', label: '📚 Sabhi 500 Verbs', count: ALL_500_VERBS.length }
-        ].map(t => (
-          <button
-            key={t.id}
-            onClick={() => {
-              setActiveTab(t.id as VerbTabType)
-              if (t.id === 'ai_practice' && chatMessages.length === 0) {
-                initAiPractice()
-              }
-              if (t.id === 'quiz' && quizQuestions.length === 0) {
-                startQuiz()
-              }
-            }}
-            className={cn(
-              'flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs md:text-sm font-extrabold transition-all',
-              activeTab === t.id
-                ? 'bg-blue-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200 bg-transparent'
-            )}
-          >
-            <span>{t.label}</span>
-            {t.count !== undefined && t.count > 0 && (
-              <span className={cn(
-                'px-1.5 py-0.5 rounded-full text-[10px] font-black',
-                activeTab === t.id ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
-              )}>
-                {t.count}
-              </span>
-            )}
-          </button>
-        ))}
+      {/* Tabs with smooth horizontal scroll on mobile */}
+      <div className="w-full overflow-x-auto no-scrollbar py-0.5">
+        <div className="flex gap-1.5 sm:gap-2 p-1 rounded-2xl bg-slate-900/90 border border-slate-800 w-max min-w-full sm:min-w-0">
+          {[
+            { id: 'today', label: `📅 Aaj ke 15 Verbs (Day ${selectedDay})`, count: todayVerbs.length - Object.keys(dayReviewed).length },
+            { id: 'ai_practice', label: '🤖 AI Voice Coach' },
+            { id: 'quiz', label: '❓ Verb Quiz' },
+            { id: 'all', label: '📚 Sabhi 500 Verbs', count: ALL_500_VERBS.length }
+          ].map(t => (
+            <button
+              key={t.id}
+              onClick={() => {
+                setActiveTab(t.id as VerbTabType)
+                if (t.id === 'ai_practice' && chatMessages.length === 0) {
+                  initAiPractice()
+                }
+                if (t.id === 'quiz' && quizQuestions.length === 0) {
+                  startQuiz()
+                }
+              }}
+              className={cn(
+                'flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all flex-shrink-0 whitespace-nowrap',
+                activeTab === t.id
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200 bg-transparent'
+              )}
+            >
+              <span>{t.label}</span>
+              {t.count !== undefined && t.count > 0 && (
+                <span className={cn(
+                  'px-1.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-black',
+                  activeTab === t.id ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
+                )}>
+                  {t.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* ─── TAB 1: TODAY'S 15 VERBS (1-by-1 Flashcard UI Matching Images 3 & 4) ─── */}
+      {/* ─── TAB 1: TODAY'S 15 VERBS (1-by-1 Flashcard UI) ─── */}
       {activeTab === 'today' && (
-        <div className="rounded-2xl border p-6 min-h-[460px] flex flex-col justify-between"
+        <div className="rounded-2xl border p-4 sm:p-6 min-h-[440px] sm:min-h-[480px] flex flex-col justify-between"
           style={{ background: '#1E293B', borderColor: '#334155' }}>
           
           {todayVerbs.length === 0 ? (
             <div className="text-center py-20 text-slate-400">Loading Day {selectedDay} verbs...</div>
           ) : currentIdx < todayVerbs.length ? (
-            <div className="space-y-6 flex-1 flex flex-col justify-between">
+            <div className="space-y-4 sm:space-y-6 flex-1 flex flex-col justify-between">
               {/* Header inside card container */}
               <div>
-                <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">
+                <span className="text-[9px] sm:text-[10px] font-black text-blue-400 uppercase tracking-widest">
                   TODAY'S VERB {currentIdx + 1} OF {todayVerbs.length} (DAY {selectedDay})
                 </span>
-                <h3 className="text-sm font-bold text-slate-400 mt-0.5">
+                <h3 className="text-xs sm:text-sm font-bold text-slate-400 mt-0.5">
                   Naya verb seekhein aur click karke check karein
                 </h3>
               </div>
 
               {/* Centered Flip Card */}
-              <div className="flex justify-center py-4">
+              <div className="flex justify-center py-2 sm:py-4">
                 <VerbCard
                   word={todayVerbs[currentIdx]}
                   isFlipped={isFlipped}
@@ -511,20 +511,20 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
                 />
               </div>
 
-              {/* Study Controls (Below Card, Matching Image 3 & 4) */}
-              <div className="space-y-4 max-w-md mx-auto w-full">
-                <div className="flex gap-3">
+              {/* Study Controls (Below Card) */}
+              <div className="space-y-3.5 max-w-md mx-auto w-full">
+                <div className="flex gap-2.5 sm:gap-3">
                   <button
                     onClick={() => handleReviewVerb('learning')}
-                    className="flex-1 py-3 rounded-xl border border-slate-700 bg-slate-900/40 text-slate-300 hover:border-slate-500 text-xs font-extrabold transition-all"
+                    className="flex-1 py-3 sm:py-3.5 rounded-xl border border-slate-700 bg-slate-900/40 text-slate-300 hover:border-slate-500 text-xs sm:text-sm font-extrabold transition-all active:scale-[0.98]"
                   >
                     📖 Seekh raha hoon
                   </button>
                   <button
                     onClick={() => handleReviewVerb('known')}
-                    className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 shadow-md"
+                    className="flex-1 py-3 sm:py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-1.5 shadow-md active:scale-[0.98]"
                   >
-                    <Check size={14} /> Janta hoon
+                    <Check size={15} /> Janta hoon
                   </button>
                 </div>
 
@@ -533,14 +533,14 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
                   <button
                     disabled={currentIdx === 0}
                     onClick={() => { setIsFlipped(false); setCurrentIdx(p => Math.max(0, p - 1)); }}
-                    className="hover:text-white transition flex items-center gap-1 disabled:opacity-30 disabled:pointer-events-none"
+                    className="hover:text-white transition flex items-center gap-1 disabled:opacity-30 disabled:pointer-events-none p-1"
                   >
-                    ← Pichla Verb
+                    ← Pichla
                   </button>
 
                   <button
                     onClick={() => speak(todayVerbs[currentIdx].word)}
-                    className="hover:text-blue-400 transition flex items-center gap-1 text-slate-300 font-bold"
+                    className="hover:text-blue-400 transition flex items-center gap-1 text-slate-300 font-bold p-1"
                   >
                     <Volume2 size={15} /> Pronounce
                   </button>
@@ -548,45 +548,45 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
                   <button
                     disabled={currentIdx >= todayVerbs.length - 1}
                     onClick={() => { setIsFlipped(false); setCurrentIdx(p => Math.min(todayVerbs.length - 1, p + 1)); }}
-                    className="hover:text-white transition flex items-center gap-1 disabled:opacity-30 disabled:pointer-events-none"
+                    className="hover:text-white transition flex items-center gap-1 disabled:opacity-30 disabled:pointer-events-none p-1"
                   >
-                    Agla Verb →
+                    Agla →
                   </button>
                 </div>
               </div>
             </div>
           ) : (
             // All 15 verbs completed for the day
-            <div className="text-center py-12 space-y-6 flex-1 flex flex-col justify-center items-center">
-              <div className="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-                <CheckCircle2 size={36} />
+            <div className="text-center py-10 sm:py-12 space-y-5 sm:space-y-6 flex-1 flex flex-col justify-center items-center">
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                <CheckCircle2 size={32} className="sm:w-9 sm:h-9" />
               </div>
-              <div className="space-y-2">
-                <h3 className="text-2xl font-black text-slate-100">
+              <div className="space-y-1.5">
+                <h3 className="text-xl sm:text-2xl font-black text-slate-100">
                   Day {selectedDay} ke saare 15 Verbs complete! 🎉
                 </h3>
-                <p className="text-xs text-slate-400 max-w-md mx-auto">
+                <p className="text-xs text-slate-400 max-w-md mx-auto px-2">
                   Shabaash! Ab in verbs ko bolkar practice karne ke liye AI Voice Coach se baat karein ya Quiz dein.
                 </p>
               </div>
 
-              <div className="flex flex-wrap gap-3 justify-center pt-2">
+              <div className="flex flex-wrap gap-2.5 sm:gap-3 justify-center pt-2">
                 <button
                   onClick={() => { setActiveTab('ai_practice'); initAiPractice(); }}
-                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold shadow-lg transition flex items-center gap-2"
+                  className="px-4 sm:px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold shadow-lg transition flex items-center gap-2"
                 >
-                  <Bot size={16} /> Start AI Voice Coach
+                  <Bot size={15} /> Start AI Voice Coach
                 </button>
                 <button
                   onClick={startQuiz}
-                  className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold shadow-lg transition flex items-center gap-2"
+                  className="px-4 sm:px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold shadow-lg transition flex items-center gap-2"
                 >
-                  <Target size={16} /> Start Verb Quiz
+                  <Target size={15} /> Start Verb Quiz
                 </button>
                 {selectedDay < TOTAL_VERB_DAYS && (
                   <button
                     onClick={() => setSelectedDay(d => d + 1)}
-                    className="px-5 py-2.5 rounded-xl border border-slate-700 bg-slate-800 text-slate-200 text-xs font-extrabold hover:bg-slate-700 transition"
+                    className="px-4 sm:px-5 py-2.5 rounded-xl border border-slate-700 bg-slate-800 text-slate-200 text-xs font-extrabold hover:bg-slate-700 transition"
                   >
                     Day {selectedDay + 1} Shuru Karein →
                   </button>
@@ -597,33 +597,33 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
         </div>
       )}
 
-      {/* ─── TAB 2: AI VOICE COACH (Full Voice Assistant like /speaking) ─── */}
+      {/* ─── TAB 2: AI VOICE COACH (Aria Verb Coach) ─── */}
       {activeTab === 'ai_practice' && (
-        <div className="rounded-2xl border flex flex-col h-[580px] overflow-hidden"
+        <div className="rounded-2xl border flex flex-col h-[calc(100vh-290px)] min-h-[460px] max-h-[600px] overflow-hidden"
           style={{ background: '#1E293B', borderColor: '#334155' }}>
           
           {/* Coach Header with Speed & Audio Controls */}
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800/90 bg-slate-900/60">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-black text-xs shadow-md">
+          <div className="flex items-center justify-between px-3.5 sm:px-5 py-3 border-b border-slate-800/90 bg-slate-900/60">
+            <div className="flex items-center gap-2 sm:gap-2.5">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-black text-xs shadow-md flex-shrink-0">
                 A
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-sm font-black text-slate-100">Aria Verb Coach</span>
-                  <Sparkle size={12} className="text-blue-400 fill-blue-400" />
+                  <span className="text-xs sm:text-sm font-black text-slate-100">Aria Verb Coach</span>
+                  <Sparkle size={11} className="text-blue-400 fill-blue-400" />
                 </div>
-                <p className="text-[10px] text-slate-400 font-medium">Day {selectedDay} Verbs Voice Practice</p>
+                <p className="text-[9px] sm:text-[10px] text-slate-400 font-medium">Day {selectedDay} Verbs Voice Practice</p>
               </div>
             </div>
 
             {/* Audio controls */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <button
                 type="button"
                 onClick={() => setSlowMode(!slowMode)}
                 className={cn(
-                  "px-2.5 py-1 rounded-lg text-xs font-extrabold border transition",
+                  "px-2 py-1 rounded-lg text-[10px] sm:text-xs font-extrabold border transition",
                   slowMode
                     ? "bg-purple-600/20 text-purple-300 border-purple-500/40"
                     : "bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200"
@@ -647,7 +647,7 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
                 )}
                 title={voiceEnabled ? 'Mute AI Voice' : 'Unmute AI Voice'}
               >
-                {voiceEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+                {voiceEnabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
               </button>
 
               <button
@@ -656,14 +656,14 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
                 className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700 transition"
                 title="Reset Conversation"
               >
-                <RotateCcw size={15} />
+                <RotateCcw size={14} />
               </button>
             </div>
           </div>
 
-          {/* Quick Verb Suggestion Chips */}
-          <div className="px-4 py-2.5 bg-slate-950/40 border-b border-slate-800/60 overflow-x-auto flex items-center gap-2 no-scrollbar">
-            <span className="text-[11px] font-bold text-slate-500 flex-shrink-0">💡 Quick Practice:</span>
+          {/* Quick Verb Suggestion Chips (Horizontal Scrollable) */}
+          <div className="px-3 sm:px-4 py-2 bg-slate-950/40 border-b border-slate-800/60 overflow-x-auto flex items-center gap-1.5 sm:gap-2 no-scrollbar">
+            <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 flex-shrink-0">💡 Quick:</span>
             {[
               `Practice "${todayVerbs[0]?.word || 'go'}" in Past (V2)`,
               `Use "${todayVerbs[1]?.word || 'have'}" with have/has (V3)`,
@@ -673,7 +673,7 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
               <button
                 key={idx}
                 onClick={() => handleSendAiMessage(chip)}
-                className="px-3 py-1 rounded-full bg-slate-800/80 hover:bg-blue-600 hover:text-white text-[11px] font-semibold text-slate-300 border border-slate-700 hover:border-blue-500 transition flex-shrink-0"
+                className="px-2.5 sm:px-3 py-1 rounded-full bg-slate-800/80 hover:bg-blue-600 hover:text-white text-[10px] sm:text-[11px] font-semibold text-slate-300 border border-slate-700 hover:border-blue-500 transition flex-shrink-0 whitespace-nowrap"
               >
                 {chip}
               </button>
@@ -681,26 +681,26 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
           </div>
 
           {/* Chat Messages Area */}
-          <div className="flex-1 overflow-y-auto p-4 md:p-5 space-y-4">
+          <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-5 space-y-3 sm:space-y-4">
             {chatMessages.map(msg => (
               <div
                 key={msg.id}
                 className={cn(
-                  "flex gap-3 max-w-[85%]",
+                  "flex gap-2 sm:gap-3 max-w-[92%] sm:max-w-[85%]",
                   msg.sender === 'user' ? "ml-auto flex-row-reverse" : "mr-auto"
                 )}
               >
                 {/* Avatar */}
                 <div className={cn(
-                  "w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5",
+                  "w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold flex-shrink-0 mt-0.5",
                   msg.sender === 'user' ? "bg-purple-600 text-white" : "bg-blue-600 text-white"
                 )}>
                   {msg.sender === 'user' ? 'U' : 'A'}
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-1 max-w-full">
                   <div className={cn(
-                    "p-3.5 rounded-2xl text-xs md:text-sm leading-relaxed whitespace-pre-line shadow-md",
+                    "p-3 sm:p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed whitespace-pre-line shadow-md break-words",
                     msg.sender === 'user'
                       ? "bg-blue-600 text-white rounded-tr-none font-medium"
                       : "bg-slate-900 border border-slate-800 text-slate-200 rounded-tl-none font-normal"
@@ -708,16 +708,16 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
                     {msg.text}
                   </div>
 
-                  {/* Message Bottom (Time + Replay audio button) */}
+                  {/* Message Bottom */}
                   <div className={cn(
-                    "flex items-center gap-2 text-[10px] text-slate-500 px-1",
+                    "flex items-center gap-1.5 text-[9px] sm:text-[10px] text-slate-500 px-1",
                     msg.sender === 'user' ? "justify-end" : "justify-start"
                   )}>
                     <span>{msg.time}</span>
                     {msg.sender === 'ai' && (
                       <button
                         onClick={() => playAiVoice(msg.text)}
-                        className="hover:text-blue-400 text-slate-400 transition"
+                        className="hover:text-blue-400 text-slate-400 transition p-0.5"
                         title="Replay Voice"
                       >
                         <Volume2 size={12} />
@@ -730,24 +730,24 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
 
             {/* Interim live speech transcript while recording */}
             {isListening && interimTranscript && (
-              <div className="flex gap-3 max-w-[85%] ml-auto flex-row-reverse">
-                <div className="w-7 h-7 rounded-full bg-purple-600 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
+              <div className="flex gap-2 sm:gap-3 max-w-[90%] ml-auto flex-row-reverse">
+                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-purple-600 text-white flex items-center justify-center text-[10px] sm:text-xs font-bold flex-shrink-0">
                   U
                 </div>
-                <div className="p-3 rounded-2xl bg-purple-600/30 border border-purple-500/40 text-purple-200 text-xs italic">
+                <div className="p-2.5 sm:p-3 rounded-2xl bg-purple-600/30 border border-purple-500/40 text-purple-200 text-xs italic">
                   &ldquo;{interimTranscript}...&rdquo;
                 </div>
               </div>
             )}
 
             {aiLoading && (
-              <div className="flex gap-3 mr-auto max-w-[85%] items-center text-xs text-slate-400 p-2">
-                <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold">
+              <div className="flex gap-2 sm:gap-3 mr-auto max-w-[90%] items-center text-xs text-slate-400 p-1">
+                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] sm:text-xs font-bold">
                   A
                 </div>
-                <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 p-3 rounded-2xl">
-                  <span className="animate-spin w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-blue-500" />
-                  <span>Aria is listening and preparing feedback...</span>
+                <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 p-2.5 sm:p-3 rounded-2xl text-[11px] sm:text-xs">
+                  <span className="animate-spin w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full border-2 border-t-transparent border-blue-500" />
+                  <span>Aria is listening...</span>
                 </div>
               </div>
             )}
@@ -755,20 +755,20 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
           </div>
 
           {/* Bottom Voice & Text Input Bar */}
-          <div className="p-3 md:p-4 bg-slate-900/90 border-t border-slate-800 flex items-center gap-2">
+          <div className="p-2.5 sm:p-3 md:p-4 bg-slate-900/90 border-t border-slate-800 flex items-center gap-2">
             {/* Pulsing Mic Button */}
             <button
               type="button"
               onClick={handleMicToggle}
               className={cn(
-                "p-3 rounded-full transition shadow-lg flex-shrink-0 relative",
+                "w-10 h-10 sm:w-11 sm:h-11 rounded-full transition shadow-lg flex-shrink-0 flex items-center justify-center relative",
                 isListening
                   ? "bg-rose-600 text-white animate-pulse ring-4 ring-rose-500/30"
                   : "bg-blue-600 hover:bg-blue-500 text-white"
               )}
               title={isListening ? "Stop Recording (Send)" : "Start Speaking with Voice"}
             >
-              {isListening ? <Square size={18} className="fill-white" /> : <Mic size={18} />}
+              {isListening ? <Square size={16} className="fill-white" /> : <Mic size={17} />}
             </button>
 
             {/* Text Input */}
@@ -778,9 +778,9 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleSendAiMessage(); }}
-                placeholder={isListening ? "Listening... Speak now!" : "Yahan bolne ke liye mic dabao ya type karo..."}
+                placeholder={isListening ? "Listening... Speak now!" : "Bolne ke liye mic dabao ya type karo..."}
                 className={cn(
-                  "w-full bg-slate-950 border rounded-xl pl-4 pr-10 py-2.5 text-xs md:text-sm text-slate-100 focus:outline-none transition",
+                  "w-full bg-slate-950 border rounded-xl pl-3.5 pr-9 py-2.5 text-xs sm:text-sm text-slate-100 focus:outline-none transition",
                   isListening
                     ? "border-rose-500 ring-2 ring-rose-500/20 placeholder:text-rose-400"
                     : "border-slate-700 focus:border-blue-500 placeholder:text-slate-500"
@@ -791,7 +791,7 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
                 onClick={() => handleSendAiMessage()}
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:text-blue-400 disabled:opacity-30 transition"
               >
-                <Send size={15} />
+                <Send size={14} />
               </button>
             </div>
           </div>
@@ -800,17 +800,17 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
 
       {/* ─── TAB 3: QUIZ ─── */}
       {activeTab === 'quiz' && (
-        <div className="rounded-2xl border p-6 min-h-[460px]"
+        <div className="rounded-2xl border p-4 sm:p-6 min-h-[440px]"
           style={{ background: '#1E293B', borderColor: '#334155' }}>
           
           {!quizFinished && quizQuestions.length > 0 && (
-            <div className="max-w-xl mx-auto space-y-6">
+            <div className="max-w-xl mx-auto space-y-4 sm:space-y-6">
               {/* Question progress */}
               <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-blue-400 uppercase tracking-widest">
+                <span className="text-[10px] sm:text-xs font-black text-blue-400 uppercase tracking-widest">
                   Question {quizIdx + 1} of {quizQuestions.length}
                 </span>
-                <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+                <span className="text-[10px] sm:text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border border-emerald-500/20">
                   Score: {quizScore}
                 </span>
               </div>
@@ -824,12 +824,12 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
               </div>
 
               {/* Prompt Card */}
-              <div className="bg-slate-950/90 p-5 rounded-2xl border border-slate-800 space-y-2">
-                <p className="text-sm md:text-base font-bold text-slate-100 whitespace-pre-line leading-relaxed">
+              <div className="bg-slate-950/90 p-4 sm:p-5 rounded-2xl border border-slate-800 space-y-2">
+                <p className="text-xs sm:text-base font-bold text-slate-100 whitespace-pre-line leading-relaxed">
                   {quizQuestions[quizIdx].prompt}
                 </p>
                 {quizQuestions[quizIdx].sentenceHindi && (
-                  <p className="text-xs text-slate-400 italic">
+                  <p className="text-[11px] sm:text-xs text-slate-400 italic">
                     {quizQuestions[quizIdx].sentenceHindi}
                   </p>
                 )}
@@ -845,21 +845,21 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
                     onChange={(e) => setQuizTypedAnswer(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter' && !quizAnswered && quizTypedAnswer.trim()) handleQuizSubmit(quizTypedAnswer); }}
                     placeholder="Type Past (V2) form here..."
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-base font-bold text-slate-100 focus:outline-none focus:border-blue-500"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base font-bold text-slate-100 focus:outline-none focus:border-blue-500"
                     autoFocus
                   />
                   {!quizAnswered && (
                     <button
                       disabled={!quizTypedAnswer.trim()}
                       onClick={() => handleQuizSubmit(quizTypedAnswer)}
-                      className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-xs font-black uppercase tracking-wider transition"
+                      className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-xs font-black uppercase tracking-wider transition active:scale-[0.98]"
                     >
                       Check Answer
                     </button>
                   )}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-2.5">
+                <div className="grid grid-cols-1 gap-2 sm:gap-2.5">
                   {quizQuestions[quizIdx].options?.map((opt, i) => {
                     const isSelected = quizSelectedOption === opt
                     const isCorrect = opt.trim() === quizQuestions[quizIdx].correctAnswer.trim()
@@ -876,11 +876,11 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
                         disabled={quizAnswered}
                         onClick={() => handleQuizSubmit(opt)}
                         className={cn(
-                          'w-full text-left p-3.5 rounded-xl border text-xs md:text-sm font-semibold transition-all flex items-center justify-between',
+                          'w-full text-left p-3 sm:p-3.5 rounded-xl border text-xs sm:text-sm font-semibold transition-all flex items-center justify-between active:scale-[0.98]',
                           btnStyle
                         )}
                       >
-                        <span>{opt}</span>
+                        <span className="truncate mr-2">{opt}</span>
                         {quizAnswered && isCorrect && <Check size={16} className="text-emerald-400 flex-shrink-0" />}
                         {quizAnswered && isSelected && !isCorrect && <X size={16} className="text-rose-400 flex-shrink-0" />}
                       </button>
@@ -891,15 +891,15 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
 
               {/* Explanation & Next */}
               {quizAnswered && (
-                <div className="space-y-4 pt-2">
-                  <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-1">
-                    <p className="font-bold text-amber-400">💡 Explanation:</p>
-                    <p className="text-slate-300">{quizQuestions[quizIdx].explanation}</p>
+                <div className="space-y-3 sm:space-y-4 pt-1 sm:pt-2">
+                  <div className="p-3 sm:p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-1">
+                    <p className="font-bold text-amber-400 text-[11px] sm:text-xs">💡 Explanation:</p>
+                    <p className="text-slate-300 text-[11px] sm:text-xs leading-relaxed">{quizQuestions[quizIdx].explanation}</p>
                   </div>
 
                   <button
                     onClick={handleNextQuiz}
-                    className="w-full py-3.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-black uppercase tracking-wider shadow-lg transition"
+                    className="w-full py-3 sm:py-3.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-black uppercase tracking-wider shadow-lg transition active:scale-[0.98]"
                   >
                     {quizIdx < quizQuestions.length - 1 ? 'Next Question →' : 'View Final Score 🎉'}
                   </button>
@@ -909,30 +909,30 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
           )}
 
           {quizFinished && (
-            <div className="max-w-md mx-auto text-center space-y-6 py-6">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center mx-auto text-white shadow-xl">
-                <Award size={32} />
+            <div className="max-w-md mx-auto text-center space-y-5 sm:space-y-6 py-4 sm:py-6">
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center mx-auto text-white shadow-xl">
+                <Award size={28} className="sm:w-8 sm:h-8" />
               </div>
               <div className="space-y-1">
-                <h2 className="text-2xl font-black text-slate-100">Quiz Completed!</h2>
+                <h2 className="text-xl sm:text-2xl font-black text-slate-100">Quiz Completed!</h2>
                 <p className="text-xs text-slate-400">
                   {quizQuestions.length} mein se {quizScore} sahi answers.
                 </p>
               </div>
 
-              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 inline-block px-8">
-                <span className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">
+              <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-950 border border-slate-800 inline-block px-6 sm:px-8">
+                <span className="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">
                   {Math.round((quizScore / quizQuestions.length) * 100)}%
                 </span>
-                <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">Accuracy</p>
+                <p className="text-[9px] sm:text-[10px] text-slate-500 font-bold uppercase mt-1">Accuracy</p>
               </div>
 
               {wrongAnswers.length > 0 && (
-                <div className="text-left space-y-2 pt-2">
+                <div className="text-left space-y-2 pt-1 sm:pt-2">
                   <p className="text-xs font-bold text-slate-400">Review mistakes:</p>
-                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                  <div className="space-y-2 max-h-36 sm:max-h-40 overflow-y-auto pr-1">
                     {wrongAnswers.map((w, idx) => (
-                      <div key={idx} className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+                      <div key={idx} className="p-2 sm:p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] sm:text-xs">
                         <span className="font-bold text-slate-200">{w.verb.word}</span>: Correct was <strong className="text-emerald-400">{w.correctAnswer}</strong>
                       </div>
                     ))}
@@ -940,16 +940,16 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
                 </div>
               )}
 
-              <div className="flex gap-3">
+              <div className="flex gap-2.5 sm:gap-3">
                 <button
                   onClick={startQuiz}
-                  className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs transition"
+                  className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs transition active:scale-[0.98]"
                 >
                   Play Again 🔄
                 </button>
                 <button
                   onClick={() => setActiveTab('today')}
-                  className="flex-1 py-3 rounded-xl border border-slate-700 bg-slate-800 text-slate-300 font-extrabold text-xs transition"
+                  className="flex-1 py-3 rounded-xl border border-slate-700 bg-slate-800 text-slate-300 font-extrabold text-xs transition active:scale-[0.98]"
                 >
                   Back to Learning
                 </button>
@@ -961,17 +961,17 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
 
       {/* ─── TAB 4: ALL 500 VERBS (Dictionary) ─── */}
       {activeTab === 'all' && (
-        <div className="space-y-5">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
+        <div className="space-y-4 sm:space-y-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3 bg-slate-900/60 p-3 sm:p-4 rounded-2xl border border-slate-800">
             {/* Search Input */}
-            <div className="relative col-span-1 md:col-span-1">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+            <div className="relative col-span-1 sm:col-span-2 md:col-span-1">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" size={15} />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search word, Hindi, V2, V3..."
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-10 pr-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
               />
             </div>
 
@@ -980,7 +980,7 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
               <select
                 value={refCategory}
                 onChange={(e) => setRefCategory(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
               >
                 <option value="all">All Categories</option>
                 <option value="irregular">🔀 Irregular Verbs</option>
@@ -996,7 +996,7 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
               <select
                 value={refLevel}
                 onChange={(e) => setRefLevel(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
               >
                 <option value="all">All CEFR Levels</option>
                 <option value="A0">A0 — Absolute Beginner</option>
@@ -1012,7 +1012,7 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
               <select
                 value={refDay}
                 onChange={(e) => setRefDay(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
               >
                 <option value="all">All 34 Days (500 verbs)</option>
                 {Array.from({ length: TOTAL_VERB_DAYS }, (_, i) => i + 1).map(d => (
@@ -1022,13 +1022,13 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
             </div>
           </div>
 
-          <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+          <div className="flex items-center justify-between text-[11px] sm:text-xs text-slate-400 px-1">
             <span>Showing <strong className="text-slate-200">{filteredAllVerbs.length}</strong> verbs</span>
-            <span>Tap card to view V1, V2, V3 and examples</span>
+            <span className="hidden sm:inline">Tap card to view V1, V2, V3 and examples</span>
           </div>
 
           {/* Grid of Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
             {filteredAllVerbs.map(verb => (
               <VerbCard
                 key={verb.word}

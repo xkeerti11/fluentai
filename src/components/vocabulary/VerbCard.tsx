@@ -49,13 +49,16 @@ export default function VerbCard({
   return (
     <div
       onClick={onFlip}
-      className={cn("w-full max-w-lg h-[340px] perspective-1000 cursor-pointer select-none mx-auto", className)}
+      className={cn(
+        "w-full max-w-sm sm:max-w-md md:max-w-lg h-[360px] sm:h-[350px] md:h-[340px] perspective-1000 cursor-pointer select-none mx-auto",
+        className
+      )}
       style={{ perspective: 1000 }}
     >
       <motion.div
         animate={{ rotateY: isFlipped ? 180 : 0 }}
         transition={{ duration: 0.5, ease: [0.23, 1, 0.32, 1] }}
-        className="w-full h-full relative rounded-2xl border shadow-xl transform-style-3d"
+        className="w-full h-full relative rounded-2xl border shadow-xl transform-style-3d transition-colors"
         style={{
           transformStyle: 'preserve-3d',
           background: '#0F172A',
@@ -64,7 +67,7 @@ export default function VerbCard({
       >
         {/* ─── FRONT SIDE (Matches Image 3) ─── */}
         <div
-          className="absolute inset-0 w-full h-full flex flex-col justify-between items-center p-6 text-center rounded-2xl"
+          className="absolute inset-0 w-full h-full flex flex-col justify-between items-center p-4 sm:p-6 text-center rounded-2xl"
           style={{
             backfaceVisibility: 'hidden',
             WebkitBackfaceVisibility: 'hidden',
@@ -85,8 +88,8 @@ export default function VerbCard({
           </div>
 
           {/* Centered Word & Pronunciation */}
-          <div className="space-y-3 my-auto">
-            <h2 className="text-4xl md:text-5xl font-black text-slate-100 tracking-tight">
+          <div className="space-y-2.5 sm:space-y-3 my-auto w-full px-2">
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-slate-100 tracking-tight break-words">
               {word.word}
             </h2>
 
@@ -94,23 +97,23 @@ export default function VerbCard({
               <button
                 type="button"
                 onClick={(e) => handleSpeak(e, word.word)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-blue-500/10 hover:bg-blue-500/20 text-xs font-bold text-blue-400 border border-blue-500/20 transition mx-auto"
+                className="inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-blue-500/10 hover:bg-blue-500/20 text-xs font-bold text-blue-400 border border-blue-500/20 transition mx-auto"
               >
-                <Volume2 size={14} />
-                <span>{word.pronunciation}</span>
+                <Volume2 size={13} className="flex-shrink-0" />
+                <span className="truncate max-w-[200px]">{word.pronunciation}</span>
               </button>
             )}
           </div>
 
           {/* Bottom Hint */}
-          <p className="text-[11px] text-slate-500 font-medium tracking-wide">
+          <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium tracking-wide">
             Card ko flip karne ke liye click karein
           </p>
         </div>
 
         {/* ─── BACK SIDE (Matches Image 4 with Verb details) ─── */}
         <div
-          className="absolute inset-0 w-full h-full flex flex-col justify-between p-5 text-left rounded-2xl"
+          className="absolute inset-0 w-full h-full flex flex-col justify-between p-3.5 sm:p-5 text-left rounded-2xl overflow-y-auto no-scrollbar"
           style={{
             backfaceVisibility: 'hidden',
             WebkitBackfaceVisibility: 'hidden',
@@ -119,44 +122,44 @@ export default function VerbCard({
           }}
         >
           {/* Hindi Meaning */}
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             <span className="text-[9px] font-bold text-purple-400 uppercase tracking-wider">
               HINDI MEANING
             </span>
-            <p className="text-lg font-black text-slate-100">
+            <p className="text-base sm:text-lg font-black text-slate-100 leading-tight">
               {word.meaning_hindi}
             </p>
           </div>
 
           {/* 3 Forms (V1 - V2 - V3) */}
           {hasVerbForms && (
-            <div className="rounded-xl bg-slate-900/95 border border-slate-800 p-2.5 my-1 space-y-1.5 shadow-inner">
-              <div className="flex items-center justify-between">
-                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+            <div className="rounded-xl bg-slate-900/95 border border-slate-800 p-2 sm:p-2.5 my-1 space-y-1 sm:space-y-1.5 shadow-inner">
+              <div className="flex items-center justify-between gap-1 flex-wrap">
+                <span className="text-[8px] sm:text-[9px] font-black text-slate-400 uppercase tracking-widest">
                   THREE FORMS (V1 — V2 — V3)
                 </span>
                 {word.hindi_pronunciation && (
-                  <span className="text-[10px] font-bold text-amber-400">
+                  <span className="text-[9px] sm:text-[10px] font-bold text-amber-400 truncate">
                     {word.hindi_pronunciation}
                   </span>
                 )}
               </div>
 
-              <div className="grid grid-cols-3 gap-1.5 text-center">
+              <div className="grid grid-cols-3 gap-1 sm:gap-1.5 text-center">
                 {/* V1 */}
-                <div className="p-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex flex-col items-center">
-                  <div className="text-[8px] font-black text-emerald-400 uppercase tracking-wider">V1 (Present)</div>
-                  <div className="text-xs font-black text-emerald-200 mt-0.5 truncate w-full">{word.v1}</div>
+                <div className="p-1 sm:p-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex flex-col items-center">
+                  <div className="text-[7px] sm:text-[8px] font-black text-emerald-400 uppercase tracking-wider">V1 (Present)</div>
+                  <div className="text-[11px] sm:text-xs font-black text-emerald-200 mt-0.5 truncate w-full">{word.v1}</div>
                 </div>
                 {/* V2 */}
-                <div className="p-1.5 rounded-lg bg-blue-500/10 border border-blue-500/30 flex flex-col items-center">
-                  <div className="text-[8px] font-black text-blue-400 uppercase tracking-wider">V2 (Past)</div>
-                  <div className="text-xs font-black text-blue-200 mt-0.5 truncate w-full">{word.v2}</div>
+                <div className="p-1 sm:p-1.5 rounded-lg bg-blue-500/10 border border-blue-500/30 flex flex-col items-center">
+                  <div className="text-[7px] sm:text-[8px] font-black text-blue-400 uppercase tracking-wider">V2 (Past)</div>
+                  <div className="text-[11px] sm:text-xs font-black text-blue-200 mt-0.5 truncate w-full">{word.v2}</div>
                 </div>
                 {/* V3 */}
-                <div className="p-1.5 rounded-lg bg-purple-500/10 border border-purple-500/30 flex flex-col items-center">
-                  <div className="text-[8px] font-black text-purple-400 uppercase tracking-wider">V3 (Participle)</div>
-                  <div className="text-xs font-black text-purple-200 mt-0.5 truncate w-full">{word.v3}</div>
+                <div className="p-1 sm:p-1.5 rounded-lg bg-purple-500/10 border border-purple-500/30 flex flex-col items-center">
+                  <div className="text-[7px] sm:text-[8px] font-black text-purple-400 uppercase tracking-wider">V3 (Participle)</div>
+                  <div className="text-[11px] sm:text-xs font-black text-purple-200 mt-0.5 truncate w-full">{word.v3}</div>
                 </div>
               </div>
             </div>
@@ -164,19 +167,19 @@ export default function VerbCard({
 
           {/* Example Sentence */}
           <div className="space-y-1 border-t border-slate-800/80 pt-1.5">
-            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+            <span className="text-[8px] sm:text-[9px] font-bold text-slate-500 uppercase tracking-wider">
               EXAMPLE
             </span>
             {mainExample && (
-              <p className="text-xs text-slate-200 font-medium italic leading-snug">
+              <p className="text-[11px] sm:text-xs text-slate-200 font-medium italic leading-snug">
                 &ldquo;{mainExample}&rdquo;
               </p>
             )}
             {word.example_hindi && (
-              <p className="text-[11px] text-slate-400">{word.example_hindi}</p>
+              <p className="text-[10px] sm:text-[11px] text-slate-400 leading-snug">{word.example_hindi}</p>
             )}
             {word.verb_sentence_hindi && word.verb_sentence_english && (
-              <p className="text-[10px] text-blue-300/90 font-semibold pt-0.5">
+              <p className="text-[9px] sm:text-[10px] text-blue-300/90 font-semibold pt-0.5 leading-snug">
                 Past (V2): &ldquo;{word.verb_sentence_english}&rdquo; ({word.verb_sentence_hindi})
               </p>
             )}
@@ -184,9 +187,9 @@ export default function VerbCard({
 
           {/* Memory trick */}
           {word.memory_trick && (
-            <div className="p-2 rounded-lg border border-amber-900/40 bg-amber-500/5 flex items-start gap-1.5 mt-0.5">
-              <span className="text-[11px]">💡</span>
-              <p className="text-[10px] text-amber-300 font-semibold leading-tight">
+            <div className="p-1.5 sm:p-2 rounded-lg border border-amber-900/40 bg-amber-500/5 flex items-start gap-1.5 mt-0.5">
+              <span className="text-[10px] sm:text-[11px] flex-shrink-0">💡</span>
+              <p className="text-[9px] sm:text-[10px] text-amber-300 font-semibold leading-tight">
                 {word.memory_trick}
               </p>
             </div>
