@@ -575,7 +575,7 @@ export default function SpeakingPage() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-slate-900 relative overflow-hidden" style={{ background: '#0F172A' }}>
+    <div className="flex flex-col h-[100dvh] lg:h-screen bg-slate-900 relative overflow-hidden" style={{ background: '#0F172A' }}>
 
 
       {/* Chrome Detection warning banner */}

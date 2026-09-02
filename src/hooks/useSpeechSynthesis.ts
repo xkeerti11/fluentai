@@ -4,101 +4,141 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 export function useSpeechSynthesis() {
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [isSupported, setIsSupported] = useState(false)
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
+  const voicesRef = useRef<SpeechSynthesisVoice[]>([])
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
+  const retryCountRef = useRef(0)
 
-  // Check support and load voices
   useEffect(() => {
     if (typeof window === 'undefined') return
     if (!window.speechSynthesis) return
-
     setIsSupported(true)
 
     const loadVoices = () => {
-      const availableVoices = window.speechSynthesis.getVoices()
-      if (availableVoices.length > 0) {
-        setVoices(availableVoices)
-      }
+      const v = window.speechSynthesis.getVoices()
+      if (v.length > 0) voicesRef.current = v
     }
 
-    // Chrome loads voices async
     loadVoices()
     window.speechSynthesis.onvoiceschanged = loadVoices
 
+    // Chrome bug fix: speechSynthesis pauses in background
+    // Keep it alive with periodic resume
+    const keepAlive = setInterval(() => {
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume()
+      }
+    }, 5000)
+
     return () => {
+      clearInterval(keepAlive)
       window.speechSynthesis.cancel()
     }
   }, [])
 
-  // Get best English voice
-  const getBestVoice = useCallback((voiceList: SpeechSynthesisVoice[]) => {
-    // Priority order — best quality first
+  const getBestVoice = useCallback(() => {
+    const voices = voicesRef.current.length > 0
+      ? voicesRef.current
+      : (typeof window !== 'undefined' 
+          ? window.speechSynthesis.getVoices() 
+          : [])
+
+    // Priority: Google voices first, then any English
     const priorities = [
-      (v: SpeechSynthesisVoice) => v.name.includes('Google') && v.lang.startsWith('en'),
-      (v: SpeechSynthesisVoice) => v.name.includes('Microsoft') && v.lang.startsWith('en'),
-      (v: SpeechSynthesisVoice) => v.lang === 'en-US' && !v.localService,
-      (v: SpeechSynthesisVoice) => v.lang === 'en-GB' && !v.localService,
-      (v: SpeechSynthesisVoice) => v.lang.startsWith('en-'),
-      (v: SpeechSynthesisVoice) => v.lang.startsWith('en'),
+      (v: SpeechSynthesisVoice) => 
+        v.name.includes('Google') && v.lang === 'en-US',
+      (v: SpeechSynthesisVoice) => 
+        v.name.includes('Google') && v.lang.startsWith('en'),
+      (v: SpeechSynthesisVoice) => 
+        v.name.includes('Microsoft') && v.lang.startsWith('en'),
+      (v: SpeechSynthesisVoice) => 
+        v.lang === 'en-US',
+      (v: SpeechSynthesisVoice) => 
+        v.lang.startsWith('en'),
     ]
 
-    for (const priority of priorities) {
-      const found = voiceList.find(priority)
+    for (const p of priorities) {
+      const found = voices.find(p)
       if (found) return found
     }
-
-    return voiceList[0] || null
+    return voices[0] || null
   }, [])
 
-  const speak = useCallback((text: string) => {
+  const speakWithRetry = useCallback((
+    text: string, 
+    rate: number = 0.85,
+    attempt: number = 0
+  ) => {
     if (!text || typeof window === 'undefined') return
     if (!window.speechSynthesis) return
 
-    // Stop any current speech
     window.speechSynthesis.cancel()
 
-    // Small delay for Chrome (needed after cancel)
+    const delay = attempt === 0 ? 100 : 300
+    
     setTimeout(() => {
       const utterance = new SpeechSynthesisUtterance(text)
-
-      // Voice settings optimized for English learners
       utterance.lang = 'en-US'
-      utterance.rate = 0.85   // Slightly slow — good for learners
+      utterance.rate = rate
       utterance.pitch = 1.0
       utterance.volume = 1.0
 
-      // Set best available voice
-      const currentVoices = voices.length > 0
-        ? voices
-        : window.speechSynthesis.getVoices()
+      const voice = getBestVoice()
+      if (voice) utterance.voice = voice
 
-      const bestVoice = getBestVoice(currentVoices)
-      if (bestVoice) {
-        utterance.voice = bestVoice
+      utterance.onstart = () => {
+        setIsSpeaking(true)
+        retryCountRef.current = 0
       }
-
-      // Event handlers
-      utterance.onstart = () => setIsSpeaking(true)
 
       utterance.onend = () => {
         setIsSpeaking(false)
         utteranceRef.current = null
       }
 
-      utterance.onerror = (event) => {
-        // Ignore 'interrupted' error (happens when cancelled)
-        if (event.error !== 'interrupted') {
-          console.warn('TTS error:', event.error)
+      utterance.onerror = (e) => {
+        if (e.error === 'interrupted' || e.error === 'canceled') {
+          setIsSpeaking(false)
+          return
         }
-        setIsSpeaking(false)
-        utteranceRef.current = null
+        // Retry on error (max 2 times)
+        if (attempt < 2) {
+          console.warn(`TTS error (attempt ${attempt + 1}):`, e.error)
+          setIsSpeaking(false)
+          speakWithRetry(text, rate, attempt + 1)
+        } else {
+          setIsSpeaking(false)
+        }
       }
 
       utteranceRef.current = utterance
+      
+      // Extra safety: if speechSynthesis is paused, resume first
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume()
+      }
+      
       window.speechSynthesis.speak(utterance)
-    }, 50)
 
-  }, [voices, getBestVoice])
+      // Chrome bug: sometimes speak() silently fails
+      // Check after 1s if it actually started
+      setTimeout(() => {
+        if (utteranceRef.current === utterance && !window.speechSynthesis.speaking) {
+          if (attempt < 2) {
+            speakWithRetry(text, rate, attempt + 1)
+          }
+        }
+      }, 1000)
+
+    }, delay)
+  }, [getBestVoice])
+
+  const speak = useCallback((text: string) => {
+    speakWithRetry(text, 0.85, 0)
+  }, [speakWithRetry])
+
+  const speakSlower = useCallback((text: string) => {
+    speakWithRetry(text, 0.65, 0)
+  }, [speakWithRetry])
 
   const stopSpeaking = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -107,40 +147,5 @@ export function useSpeechSynthesis() {
     utteranceRef.current = null
   }, [])
 
-  const speakSlower = useCallback((text: string) => {
-    if (!text || typeof window === 'undefined') return
-    if (!window.speechSynthesis) return
-
-    window.speechSynthesis.cancel()
-
-    setTimeout(() => {
-      const utterance = new SpeechSynthesisUtterance(text)
-      utterance.lang = 'en-US'
-      utterance.rate = 0.65  // Very slow for difficult words
-      utterance.pitch = 1.0
-      utterance.volume = 1.0
-
-      const currentVoices = voices.length > 0
-        ? voices
-        : window.speechSynthesis.getVoices()
-
-      const bestVoice = getBestVoice(currentVoices)
-      if (bestVoice) utterance.voice = bestVoice
-
-      utterance.onstart = () => setIsSpeaking(true)
-      utterance.onend = () => setIsSpeaking(false)
-      utterance.onerror = () => setIsSpeaking(false)
-
-      window.speechSynthesis.speak(utterance)
-    }, 50)
-  }, [voices, getBestVoice])
-
-  return {
-    speak,
-    stopSpeaking,
-    speakSlower,
-    isSpeaking,
-    isSupported,
-    voices
-  }
+  return { speak, speakSlower, stopSpeaking, isSpeaking, isSupported }
 }

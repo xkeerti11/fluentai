@@ -46,6 +46,11 @@
    CSS Variables (for direct use)
 ───────────────────────────────────────── */
 :root {
+  --sat: env(safe-area-inset-top);
+  --sar: env(safe-area-inset-right);
+  --sab: env(safe-area-inset-bottom);
+  --sal: env(safe-area-inset-left);
+
   --background:   #0F172A;
   --foreground:   #F1F5F9;
   --surface:      #1E293B;
@@ -58,6 +63,12 @@
   --error:        #EF4444;
   --warning:      #F59E0B;
   --ai-purple:    #8B5CF6;
+}
+
+/* Prevent iOS bounce scroll and touch optimization */
+html, body {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* ─────────────────────────────────────────

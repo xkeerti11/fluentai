@@ -289,11 +289,36 @@ export default function GrammarModulePage() {
         </div>
       </div>
 
+      {/* Mobile Lesson Selector Dropdown (<lg) */}
+      <div className="lg:hidden mb-2">
+        <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+          Select Grammar Lesson:
+        </label>
+        <select
+          value={selectedLesson.id}
+          onChange={(e) => {
+            const found = GRAMMAR_LESSONS.find(l => l.id === parseInt(e.target.value, 10))
+            if (found) {
+              setSelectedLesson(found)
+              setActiveTab('learn')
+              retryQuiz()
+            }
+          }}
+          className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-100 font-bold focus:outline-none focus:border-blue-500 shadow-md"
+        >
+          {GRAMMAR_LESSONS.map(l => (
+            <option key={l.id} value={l.id}>
+              Day {l.day}: {l.title} ({l.level}) {completedLessons.includes(l.id) ? '✓' : ''}
+            </option>
+          ))}
+        </select>
+      </div>
+
       {/* Main Grid: Sidebar + Tabs Workspace */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
         
-        {/* Left Sidebar: Lesson List */}
-        <div className="lg:col-span-1 rounded-2xl border p-4 space-y-4 max-h-[calc(100vh-220px)] overflow-y-auto"
+        {/* Left Sidebar: Lesson List (Hidden on mobile, visible on lg+) */}
+        <div className="hidden lg:block lg:col-span-1 rounded-2xl border p-4 space-y-4 max-h-[calc(100vh-220px)] overflow-y-auto"
           style={{ background: '#1E293B', borderColor: '#334155' }}>
           
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 px-2">Lessons</h3>
@@ -350,10 +375,10 @@ export default function GrammarModulePage() {
         </div>
 
         {/* Right Area: Tabs and Lesson Contents */}
-        <div className="lg:col-span-3 space-y-4">
+        <div className="w-full lg:col-span-3 space-y-4">
           
           {/* Tab buttons */}
-          <div className="flex gap-2 p-1 rounded-xl bg-slate-900 border border-slate-800 self-start">
+          <div className="flex gap-2 p-1 rounded-xl bg-slate-900 border border-slate-800 overflow-x-auto no-scrollbar w-max max-w-full">
             {[
               { id: 'learn', label: '📖 Learn', activeColor: 'bg-blue-600 text-white' },
               { id: 'practice', label: '🎤 Practice', activeColor: 'bg-purple-600 text-white' },

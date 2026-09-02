@@ -23,7 +23,13 @@ interface ChatMessage {
   sender: 'ai' | 'user'
   text: string
   time: string
-  feedback?: string
+  correction?: {
+    made: boolean
+    wrong_form?: string
+    correct_form?: string
+    verb_form_used?: string
+    hindi_hint?: string
+  }
 }
 
 interface QuizQuestion {
@@ -40,7 +46,7 @@ interface QuizQuestion {
 export default function VerbsPage() {
   const { profile } = useAuth()
   
-  // Speech Hooks
+  // Speech Hooks (Using new resilient STT & TTS hooks)
   const { speak, stopSpeaking, speakSlower, isSpeaking } = useSpeechSynthesis()
   const {
     transcript,
@@ -65,7 +71,7 @@ export default function VerbsPage() {
 
   // ─── TAB 2: AI VERB PRACTICE (Voice Coach state) ───
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
-  const [chatInput, setChatInput] = useState('')
+  const [typedInput, setTypedInput] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [voiceEnabled, setVoiceEnabled] = useState(true)
   const [slowMode, setSlowMode] = useState(false)
@@ -142,22 +148,14 @@ export default function VerbsPage() {
     } catch (e) {}
   }, [selectedDay])
 
-  // Sync mic transcript into chatInput
-  useEffect(() => {
-    if (transcript) {
-      setChatInput(transcript)
-    }
-  }, [transcript])
-
   // Scroll AI chat to bottom
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chatMessages, aiLoading, interimTranscript])
+  }, [chatMessages, aiLoading, interimTranscript, transcript])
 
   // Speech player helper
   const playAiVoice = (text: string) => {
     if (!voiceEnabled) return
-    // Clean markdown/emojis for speech synthesis
     const cleanText = text
       .replace(/[*#_`~]/g, '')
       .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
@@ -173,8 +171,7 @@ export default function VerbsPage() {
   // Initialize AI Practice message
   const initAiPractice = () => {
     const v1 = todayVerbs[0]?.word || 'go'
-    const v2 = todayVerbs[1]?.word || 'eat'
-    const welcomeText = `Hello ${profile?.name || 'there'}! I'm Aria, your AI Verb Coach. Let's practice Day ${selectedDay} verbs together!\n\nToday we have verbs like "${v1}" and "${v2}". Try making a Past Tense (V2) or Present Perfect (V3) sentence using any of today's verbs. You can speak using the mic or type!`
+    const welcomeText = `Hello ${profile?.name || 'there'}! I'm Aria, your English verb practice coach. Let's practice Day ${selectedDay} verbs together!\n\nCan you make a sentence using "${v1}" in present tense (V1)?`
     
     setChatMessages([
       {
@@ -190,16 +187,16 @@ export default function VerbsPage() {
     }, 600)
   }
 
-  // Send message to AI Verb Coach
+  // Send message to dedicated /api/verb-chat endpoint
   const handleSendAiMessage = async (customText?: string) => {
-    const textToSend = (customText || chatInput || transcript).trim()
+    const textToSend = (customText || typedInput || transcript).trim()
     if (!textToSend || aiLoading) return
 
     if (isListening) {
       stopListening()
     }
     resetTranscript()
-    setChatInput('')
+    setTypedInput('')
 
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
@@ -211,40 +208,32 @@ export default function VerbsPage() {
     setAiLoading(true)
 
     try {
-      const promptContext = `You are Aria, a friendly, supportive English Coach specializing in Verb Mastery.
-The student is practicing Day ${selectedDay} verbs: ${todayVerbs.map(v => `${v.word} (V1:${v.v1}, V2:${v.v2}, V3:${v.v3}, Hindi:${v.meaning_hindi})`).join(', ')}.
-Student said: "${textToSend}".
-
-Your Task:
-1. Praise their effort warmly.
-2. Check if they used V1 (Present), V2 (Past), or V3 (Participle with have/has) correctly.
-3. If there is a mistake in verb form or grammar, politely explain the correction in simple, clear Hinglish.
-4. Challenge them with the next verb from Day ${selectedDay} to make another sentence.
-Keep your response conversational, concise (2-4 sentences max), friendly, and easy to understand aloud.`
-
-      const res = await fetch('/api/chat', {
+      const res = await fetch('/api/verb-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: [{ role: 'user', content: promptContext }],
-          mode: 'lesson'
+          messages: [...chatMessages, userMsg],
+          day: selectedDay,
+          verbs: todayVerbs
         })
       })
 
       const json = await res.json()
-      const aiReply = json.data?.reply || json.reply || `Great sentence! You used the verb accurately. Now let's try making a sentence with another Day ${selectedDay} verb!`
+      const data = json.data || {}
+      const aiReply = data.reply || "Bahut achha attempt! Next verb se ek sentence banayein."
 
       const aiMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         sender: 'ai',
         text: aiReply,
-        time: getCurrentTime()
+        time: getCurrentTime(),
+        correction: data.correction?.made ? data.correction : undefined
       }
 
       setChatMessages(prev => [...prev, aiMsg])
       playAiVoice(aiReply)
     } catch (err) {
-      const fallbackReply = 'Good effort! Make sure to check the V2 and V3 forms. Try another sentence!'
+      const fallbackReply = "Good attempt! Let's try making another sentence with today's verbs."
       setChatMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
         sender: 'ai',
@@ -257,8 +246,8 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
     }
   }
 
-  // Toggle mic listening
-  const handleMicToggle = () => {
+  // Mic click handler (Fix 5 WhatsApp style)
+  const handleMicClick = () => {
     if (isListening) {
       stopListening()
       if (transcript.trim()) {
@@ -269,7 +258,7 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
         stopSpeaking()
       }
       resetTranscript()
-      setChatInput('')
+      setTypedInput('')
       startListening()
     }
   }
@@ -597,9 +586,9 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
         </div>
       )}
 
-      {/* ─── TAB 2: AI VOICE COACH (Aria Verb Coach) ─── */}
+      {/* ─── TAB 2: AI VOICE COACH (Fix 3 & Fix 5 WhatsApp-style Voice Assistant) ─── */}
       {activeTab === 'ai_practice' && (
-        <div className="rounded-2xl border flex flex-col h-[calc(100vh-290px)] min-h-[460px] max-h-[600px] overflow-hidden"
+        <div className="rounded-2xl border flex flex-col h-[calc(100vh-280px)] min-h-[480px] max-h-[620px] overflow-hidden"
           style={{ background: '#1E293B', borderColor: '#334155' }}>
           
           {/* Coach Header with Speed & Audio Controls */}
@@ -661,13 +650,13 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
             </div>
           </div>
 
-          {/* Quick Verb Suggestion Chips (Horizontal Scrollable) */}
+          {/* Quick Verb Suggestion Chips */}
           <div className="px-3 sm:px-4 py-2 bg-slate-950/40 border-b border-slate-800/60 overflow-x-auto flex items-center gap-1.5 sm:gap-2 no-scrollbar">
             <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 flex-shrink-0">💡 Quick:</span>
             {[
-              `Practice "${todayVerbs[0]?.word || 'go'}" in Past (V2)`,
-              `Use "${todayVerbs[1]?.word || 'have'}" with have/has (V3)`,
-              `Make a sentence with "${todayVerbs[2]?.word || 'see'}"`,
+              `Practice "${todayVerbs[0]?.word || 'go'}" in Present (V1)`,
+              `Use "${todayVerbs[1]?.word || 'eat'}" in Past (V2)`,
+              `Use "${todayVerbs[2]?.word || 'have'}" with have/has (V3)`,
               `Ask me a question using Day ${selectedDay} verbs`
             ].map((chip, idx) => (
               <button
@@ -698,7 +687,7 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
                   {msg.sender === 'user' ? 'U' : 'A'}
                 </div>
 
-                <div className="space-y-1 max-w-full">
+                <div className="space-y-1.5 max-w-full">
                   <div className={cn(
                     "p-3 sm:p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed whitespace-pre-line shadow-md break-words",
                     msg.sender === 'user'
@@ -707,6 +696,28 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
                   )}>
                     {msg.text}
                   </div>
+
+                  {/* Correction card if made */}
+                  {msg.correction && (
+                    <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs space-y-1">
+                      <div className="flex items-center gap-1.5 text-amber-400 font-bold">
+                        <span>💡 Quick Tip:</span>
+                        {msg.correction.verb_form_used && (
+                          <span className="text-[10px] bg-amber-500/20 px-1.5 py-0.2 rounded">
+                            {msg.correction.verb_form_used}
+                          </span>
+                        )}
+                      </div>
+                      {msg.correction.wrong_form && msg.correction.correct_form && (
+                        <p className="text-slate-300">
+                          Say: <strong className="text-emerald-400">{msg.correction.correct_form}</strong> (instead of &quot;{msg.correction.wrong_form}&quot;)
+                        </p>
+                      )}
+                      {msg.correction.hindi_hint && (
+                        <p className="text-[11px] text-slate-400">{msg.correction.hindi_hint}</p>
+                      )}
+                    </div>
+                  )}
 
                   {/* Message Bottom */}
                   <div className={cn(
@@ -728,18 +739,6 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
               </div>
             ))}
 
-            {/* Interim live speech transcript while recording */}
-            {isListening && interimTranscript && (
-              <div className="flex gap-2 sm:gap-3 max-w-[90%] ml-auto flex-row-reverse">
-                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-purple-600 text-white flex items-center justify-center text-[10px] sm:text-xs font-bold flex-shrink-0">
-                  U
-                </div>
-                <div className="p-2.5 sm:p-3 rounded-2xl bg-purple-600/30 border border-purple-500/40 text-purple-200 text-xs italic">
-                  &ldquo;{interimTranscript}...&rdquo;
-                </div>
-              </div>
-            )}
-
             {aiLoading && (
               <div className="flex gap-2 sm:gap-3 mr-auto max-w-[90%] items-center text-xs text-slate-400 p-1">
                 <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] sm:text-xs font-bold">
@@ -754,46 +753,66 @@ Keep your response conversational, concise (2-4 sentences max), friendly, and ea
             <div ref={chatBottomRef} />
           </div>
 
-          {/* Bottom Voice & Text Input Bar */}
-          <div className="p-2.5 sm:p-3 md:p-4 bg-slate-900/90 border-t border-slate-800 flex items-center gap-2">
-            {/* Pulsing Mic Button */}
+          {/* FIX 5: WhatsApp-style Voice Input Bar with Safe-area padding */}
+          <div 
+            className="flex-shrink-0 flex items-center gap-2 px-3 py-2 border-t border-slate-800 bg-slate-900"
+            style={{ paddingBottom: 'max(8px, env(safe-area-inset-bottom))' }}
+          >
+            {/* Mic button */}
             <button
               type="button"
-              onClick={handleMicToggle}
+              onClick={handleMicClick}
               className={cn(
-                "w-10 h-10 sm:w-11 sm:h-11 rounded-full transition shadow-lg flex-shrink-0 flex items-center justify-center relative",
-                isListening
-                  ? "bg-rose-600 text-white animate-pulse ring-4 ring-rose-500/30"
+                "flex-shrink-0 w-11 h-11 rounded-full flex items-center justify-center transition-all active:scale-90 relative",
+                isListening 
+                  ? "bg-red-500 shadow-[0_0_20px_rgba(239,68,68,0.6)]" 
                   : "bg-blue-600 hover:bg-blue-500 text-white"
               )}
-              title={isListening ? "Stop Recording (Send)" : "Start Speaking with Voice"}
+              title={isListening ? "Stop Listening" : "Speak with Voice"}
             >
-              {isListening ? <Square size={16} className="fill-white" /> : <Mic size={17} />}
+              {isListening && (
+                <span className="absolute inset-0 rounded-full bg-red-400 opacity-40 animate-ping" />
+              )}
+              <Mic className="w-5 h-5 text-white relative z-10" />
             </button>
 
-            {/* Text Input */}
-            <div className="flex-1 relative">
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleSendAiMessage(); }}
-                placeholder={isListening ? "Listening... Speak now!" : "Bolne ke liye mic dabao ya type karo..."}
-                className={cn(
-                  "w-full bg-slate-950 border rounded-xl pl-3.5 pr-9 py-2.5 text-xs sm:text-sm text-slate-100 focus:outline-none transition",
-                  isListening
-                    ? "border-rose-500 ring-2 ring-rose-500/20 placeholder:text-rose-400"
-                    : "border-slate-700 focus:border-blue-500 placeholder:text-slate-500"
-                )}
-              />
-              <button
-                disabled={!chatInput.trim() || aiLoading}
-                onClick={() => handleSendAiMessage()}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:text-blue-400 disabled:opacity-30 transition"
-              >
-                <Send size={14} />
-              </button>
+            {/* Text input - also allow typing & live interim */}
+            <div className="flex-1 bg-slate-800 rounded-full px-4 py-2.5 flex items-center min-h-[44px] relative">
+              {isListening ? (
+                <span className="text-xs sm:text-sm truncate">
+                  {transcript && <span className="text-white font-medium">{transcript} </span>}
+                  {interimTranscript && (
+                    <span className="text-slate-400 italic text-xs">
+                      {interimTranscript}
+                    </span>
+                  )}
+                  {!transcript && !interimTranscript && (
+                    <span className="text-red-400 animate-pulse text-xs font-semibold">
+                      ● Sun raha hoon...
+                    </span>
+                  )}
+                </span>
+              ) : (
+                <input
+                  type="text"
+                  value={typedInput}
+                  onChange={(e) => setTypedInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSendAiMessage()}
+                  placeholder="Bolne ke liye mic dabao ya type karo..."
+                  className="w-full bg-transparent text-slate-200 text-xs sm:text-sm outline-none placeholder-slate-500"
+                />
+              )}
             </div>
+
+            {/* Send button (shows when there's typed text or finished speech) */}
+            {(typedInput.trim() || (isListening && transcript.trim())) && (
+              <button
+                onClick={() => handleSendAiMessage()}
+                className="flex-shrink-0 w-10 h-10 bg-blue-600 hover:bg-blue-500 rounded-full flex items-center justify-center transition active:scale-90"
+              >
+                <Send className="w-4 h-4 text-white" />
+              </button>
+            )}
           </div>
         </div>
       )}
