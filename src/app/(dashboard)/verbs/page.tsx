@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Sparkles, CheckCircle2, RotateCcw, 
   Search, Award, ArrowRight, ArrowLeft, Volume2,
-  Check, X, Target, Calendar, AlertTriangle, PlayCircle
+  Check, X, Target, Calendar, AlertTriangle
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/useAuth'
@@ -210,8 +210,7 @@ export default function VerbsPage() {
       setQuizFinished(true)
       
       // Calculate if passed (80% or more)
-      const finalScore = quizScore + (quizAnswered && quizSelectedOption === quizQuestions[quizIdx]?.correctAnswer ? 0 : 0)
-      const passed = finalScore >= Math.ceil(quizQuestions.length * 0.8)
+      const passed = quizScore >= Math.ceil(quizQuestions.length * 0.8)
       if (passed && selectedDay >= unlockedDay && selectedDay < TOTAL_VERB_DAYS) {
         const nextDay = selectedDay + 1
         setUnlockedDay(nextDay)
@@ -329,7 +328,7 @@ export default function VerbsPage() {
         </div>
       </div>
 
-      {/* Clean 3 Tabs (AI Coach removed) */}
+      {/* Clean 3 Tabs */}
       <div className="w-full overflow-x-auto no-scrollbar py-0.5">
         <div className="flex gap-1.5 sm:gap-2 p-1 rounded-2xl bg-slate-900/90 border border-slate-800 w-max min-w-full sm:min-w-0">
           {[
@@ -352,7 +351,7 @@ export default function VerbsPage() {
                 }
               }}
               className={cn(
-                'flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all flex-shrink-0 whitespace-nowrap',
+                'flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all flex-shrink-0 whitespace-nowrap active:scale-95',
                 activeTab === t.id
                   ? 'bg-blue-600 text-white shadow-md'
                   : 'text-slate-400 hover:text-slate-200 bg-transparent'

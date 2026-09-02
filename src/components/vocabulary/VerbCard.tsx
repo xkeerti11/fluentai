@@ -50,7 +50,7 @@ export default function VerbCard({
     <div
       onClick={onFlip}
       className={cn(
-        "w-full max-w-sm sm:max-w-md md:max-w-lg h-[360px] sm:h-[350px] md:h-[340px] perspective-1000 cursor-pointer select-none mx-auto",
+        "w-full max-w-[360px] sm:max-w-md md:max-w-lg h-[370px] sm:h-[360px] md:h-[350px] perspective-1000 cursor-pointer select-none mx-auto",
         className
       )}
       style={{ perspective: 1000 }}
@@ -88,7 +88,7 @@ export default function VerbCard({
           </div>
 
           {/* Centered Word & Pronunciation */}
-          <div className="space-y-2.5 sm:space-y-3 my-auto w-full px-2">
+          <div className="space-y-2 sm:space-y-3 my-auto w-full px-2">
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-slate-100 tracking-tight break-words">
               {word.word}
             </h2>
@@ -97,7 +97,7 @@ export default function VerbCard({
               <button
                 type="button"
                 onClick={(e) => handleSpeak(e, word.word)}
-                className="inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-blue-500/10 hover:bg-blue-500/20 text-xs font-bold text-blue-400 border border-blue-500/20 transition mx-auto"
+                className="inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-blue-500/10 hover:bg-blue-500/20 text-xs font-bold text-blue-400 border border-blue-500/20 transition mx-auto active:scale-95"
               >
                 <Volume2 size={13} className="flex-shrink-0" />
                 <span className="truncate max-w-[200px]">{word.pronunciation}</span>
@@ -107,7 +107,7 @@ export default function VerbCard({
 
           {/* Bottom Hint */}
           <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium tracking-wide">
-            Card ko flip karne ke liye click karein
+            Card ko flip karne ke liye click karein 🔄
           </p>
         </div>
 
