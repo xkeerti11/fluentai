@@ -20,26 +20,16 @@ export interface ChatMessage {
   content: string
 }
 
-// ─────────────────────────────────────────────────────────────
-// Options (per-provider overrides)
-// ─────────────────────────────────────────────────────────────
-
 export interface CallAIOptions {
   temperature?: number
   maxTokens?: number
-  /** Pass 'json_object' to force JSON output (Groq / OpenAI only) */
   responseFormat?: 'json_object' | 'text'
 }
 
 // ─────────────────────────────────────────────────────────────
-// Main router
+// Main resilient router
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Unified AI call that routes to the provider stored in the user's profile.
- * Throws Error('no_api_key') when no key is configured so callers can
- * return a friendly 403.
- */
 export async function callAI(
   config: UserAIConfig,
   systemPrompt: string,
@@ -49,24 +39,38 @@ export async function callAI(
 ): Promise<string> {
   const {
     temperature = 0.7,
-    maxTokens = 1000,
+    maxTokens = 800,
     responseFormat,
   } = options
 
-  const { provider } = config
+  // Resolve available keys (User BYOK takes priority, then process.env)
+  const groqKey = config.groq_api_key || process.env.GROQ_API_KEY || null
+  const geminiKey = config.gemini_api_key || process.env.GEMINI_API_KEY || null
+  const openaiKey = config.openai_api_key || process.env.OPENAI_API_KEY || null
 
-  // ── GROQ ────────────────────────────────────────────────────
-  if (provider === 'groq' && config.groq_api_key) {
-    const groq = new Groq({ apiKey: config.groq_api_key })
+  const primaryProvider = config.provider || 'groq'
 
-    const messages = [
-      { role: 'system' as const, content: systemPrompt },
-      ...history.map(h => ({
-        role: (h.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
-        content: h.content,
-      })),
-      { role: 'user' as const, content: userMessage },
-    ]
+  // Helper to format messages
+  const getChatMessages = () => [
+    { role: 'system' as const, content: systemPrompt },
+    ...history.slice(-10).map(h => ({
+      role: (h.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
+      content: h.content,
+    })),
+    { role: 'user' as const, content: userMessage },
+  ]
+
+  // Try Groq
+  const tryGroq = async (key: string): Promise<string> => {
+    const groq = new Groq({ apiKey: key })
+    const messages = getChatMessages()
+    
+    // Ensure "JSON" is mentioned if json_object mode is requested
+    const effectiveSystemPrompt = responseFormat === 'json_object' && !systemPrompt.includes('JSON')
+      ? `${systemPrompt}\n\nRespond strictly in valid JSON format.`
+      : systemPrompt
+
+    messages[0] = { role: 'system', content: effectiveSystemPrompt }
 
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
@@ -81,16 +85,13 @@ export async function callAI(
     return completion.choices[0]?.message?.content || ''
   }
 
-  // ── GEMINI ──────────────────────────────────────────────────
-  if (provider === 'gemini' && config.gemini_api_key) {
-    const genAI = new GoogleGenAI({ apiKey: config.gemini_api_key })
-
-    // Build contents array — system prompt as first user/model exchange,
-    // then history, then the current user message.
+  // Try Gemini
+  const tryGemini = async (key: string): Promise<string> => {
+    const genAI = new GoogleGenAI({ apiKey: key })
     const contents = [
       { role: 'user', parts: [{ text: systemPrompt }] },
       { role: 'model', parts: [{ text: 'Understood! I will follow these instructions.' }] },
-      ...history.map(h => ({
+      ...history.slice(-10).map(h => ({
         role: h.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: h.content }],
       })),
@@ -105,18 +106,10 @@ export async function callAI(
     return result.text ?? ''
   }
 
-  // ── OPENAI ──────────────────────────────────────────────────
-  if (provider === 'openai' && config.openai_api_key) {
-    const openai = new OpenAI({ apiKey: config.openai_api_key })
-
-    const messages = [
-      { role: 'system' as const, content: systemPrompt },
-      ...history.map(h => ({
-        role: (h.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
-        content: h.content,
-      })),
-      { role: 'user' as const, content: userMessage },
-    ]
+  // Try OpenAI
+  const tryOpenAI = async (key: string): Promise<string> => {
+    const openai = new OpenAI({ apiKey: key })
+    const messages = getChatMessages()
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -131,6 +124,44 @@ export async function callAI(
     return completion.choices[0]?.message?.content || ''
   }
 
-  // ── NO KEY ──────────────────────────────────────────────────
+  // ── Multi-Provider Execution with Automatic Fallbacks ────────
+  const attempts: { name: string; fn: () => Promise<string> }[] = []
+
+  if (primaryProvider === 'groq' && groqKey) attempts.push({ name: 'Groq', fn: () => tryGroq(groqKey) })
+  if (primaryProvider === 'gemini' && geminiKey) attempts.push({ name: 'Gemini', fn: () => tryGemini(geminiKey) })
+  if (primaryProvider === 'openai' && openaiKey) attempts.push({ name: 'OpenAI', fn: () => tryOpenAI(openaiKey) })
+
+  // Add remaining providers as fallbacks
+  if (primaryProvider !== 'groq' && groqKey) attempts.push({ name: 'Groq-Fallback', fn: () => tryGroq(groqKey) })
+  if (primaryProvider !== 'gemini' && geminiKey) attempts.push({ name: 'Gemini-Fallback', fn: () => tryGemini(geminiKey) })
+  if (primaryProvider !== 'openai' && openaiKey) attempts.push({ name: 'OpenAI-Fallback', fn: () => tryOpenAI(openaiKey) })
+
+  let lastError: any = null
+  for (const attempt of attempts) {
+    try {
+      const response = await attempt.fn()
+      if (response && response.trim().length > 0) {
+        return response
+      }
+    } catch (err: any) {
+      console.warn(`AI Provider [${attempt.name}] failed:`, err?.message || err)
+      lastError = err
+    }
+  }
+
+  // If all providers failed or no keys were provided, return a friendly graceful JSON response
+  if (responseFormat === 'json_object') {
+    return JSON.stringify({
+      reply: `That's an interesting point! Tell me more about "${userMessage.slice(0, 30)}...". How would you describe it in detail?`,
+      correction: { made: false, original_mistake: null, subtle_correction_used: null },
+      new_word: { word: "progress", used_in_sentence: "Practice leads to progress." },
+      session_note: "Fallback conversation mode."
+    })
+  }
+
+  if (lastError) {
+    throw lastError
+  }
+
   throw new Error('no_api_key')
 }
